@@ -24,7 +24,7 @@ manager.add_local_dep(
     "{here}",
     "..",
     version_file=("machinery", "version.py"),
-    name="machinery=={version}",
+    name="machinery-collection=={version}",
     with_tests=True
 )
 
