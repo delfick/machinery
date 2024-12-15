@@ -16,12 +16,6 @@ T = tp.TypeVar("T")
 log = logging.getLogger("machinery.helpers")
 
 
-if hasattr(asyncio, "exceptions"):
-    InvalidStateError = asyncio.exceptions.InvalidStateError
-else:
-    InvalidStateError = asyncio.futures.InvalidStateError
-
-
 class Nope:
     """Used to say there was no value"""
 
