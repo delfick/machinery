@@ -1229,7 +1229,7 @@ class memoized_property(tp.Generic[T]):
 
     def __get__(self, instance: object = None, owner: object = None) -> T:
         if instance is None:
-            return self
+            return self  # type: ignore[return-value]
 
         if getattr(instance, self.cache_name, self.Empty) is self.Empty:
             setattr(instance, self.cache_name, self.func(instance))

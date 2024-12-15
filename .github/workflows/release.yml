@@ -3,23 +3,25 @@ on:
 
 name: Release Packages
 
-permissions:
-  contents: write
-
 jobs:
   build:
     name: Create the package
     runs-on: ubuntu-latest
     environment: github_release
+    permissions:
+      # for trusted publishing
+      id-token: write
+      # for creating the release
+      contents: write
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v4
         with:
-          python-version: "3.11"
+          python-version: "3.13"
 
       - id: build
-        run: pip install hatch==1.6.3 && hatch build
+        run: ./tools/uv build
 
       - id: version
         run: |
@@ -30,19 +32,15 @@ jobs:
           echo "versiondash=$versiondash" >> $GITHUB_OUTPUT
 
       - id: create-release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           name: machinery ${{ steps.version.outputs.version }}
-          body: "https://github.com/delfick/machinery#release-${{ steps.version.outputs.versiondash }}"
+          body: "https://machinery.readthedocs.io/en/latest/api/changelog.html#release-${{ steps.version.outputs.versiondash }}"
           tag_name: "release-${{ steps.version.outputs.version }}"
-          token: ${{ secrets.GITHUB_TOKEN }}
           fail_on_unmatched_files: true
           draft: false
           prerelease: false
           files: "dist/*"
 
-      - uses: pypa/gh-action-pypi-publish@v1.4.1
-        with:
-          user: __token__
-          password: ${{ secrets.PYPI_API_TOKEN_CORE }}
-          packages_dir: dist
+      - name: publish
+        uses: pypa/gh-action-pypi-publish@release/v1

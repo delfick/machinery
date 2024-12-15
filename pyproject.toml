@@ -8,59 +8,78 @@ dynamic = ["version"]
 description = "A collection of functionality"
 readme = "README.rst"
 license = { text = "MIT" }
-requires-python = ">= 3.10"
+requires-python = ">= 3.11"
 authors = [
     { name = "Stephen Moore", email = "stephen@delfick.com" },
 ]
-dependencies = [
-]
-
-[project.optional-dependencies]
-tests = [
-    "noseOfYeti[black]==2.4.1",
-    "pytest==7.3.0",
-    "alt-pytest-asyncio==0.6.0",
+classifiers = [
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Typing :: Typed",
 ]
 
 [project.urls]
-Homepage = "https://github.com/delfick/machinery"
+repository = "https://github.com/delfick/machinery"
+changelog = "https://machinery.readthedocs.io/en/latest/api/changelog.html"
+docs = "https://machinery.readthedocs.io"
+
+[tool.uv]
+dev-dependencies = [
+    "tools",
+    "machinery_test_driver",
+]
+
+[tool.uv.sources]
+tools = { workspace = true }
+machinery-test-driver = { workspace = true }
+
+[tool.uv.workspace]
+members = ["tools", "helpers"]
 
 [tool.hatch.version]
 path = "machinery/version.py"
-
-[tool.hatch.build.targets.sdist]
-include = [
-    "/machinery",
-]
 
 [tool.hatch.build.targets.wheel]
 include = [
     "/machinery",
 ]
 
-[tool.black]
-line-length = 100
-include = '\.py$'
-exclude = '''
-/(
-     \.git
-   | \.tox
-   | dist
-   | tools/\.python
-)/
-'''
-
-[tool.isort]
-profile = "black"
-skip_glob = [
-   ".git/*",
-   ".tox/*",
-   "dist/*",
-   "tools/.*",
+[tool.ruff]
+target-version = "py310"
+line-length = 99
+extend-exclude = [
+    ".DS_Store",
+    ".pytest_cache",
+    "tools/.python",
+    "tools/deps",
+    "__pycache__",
 ]
 
+[tool.ruff.lint]
+select = [
+    "B008",  # mutable objects as function argument defaults
+    "B015",  # flake8-bugbear (useless-comparison)
+    "I",  # isort
+    "T20",  # flake8-print
+    "UP",  # pyupgrade
+    "RUF",
+    "F",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/helpers/test_result_streamer.py" = ["T201"]
+
 [tool.mypy]
-plugins = 'noseOfYeti.plugins.mypy'
-ignore_missing_imports = true
-show_column_numbers = true
-allow_redefinition = true
+exclude = '''(?x)(
+    .DS_Store
+    | .pytest_cache 
+    | __pycache__
+    | ^tools/.python
+    | ^tools/deps
+    )'''
