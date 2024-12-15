@@ -1,6 +1,7 @@
 import time
 
 from machinery import helpers as hp
+from machinery import test_helpers as thp
 
 
 def call_later(*args):
@@ -8,17 +9,17 @@ def call_later(*args):
 
 
 class TestMockedCalledLater:
-    async def test_works(self, FakeTime, MockedCallLater):
-        with FakeTime() as t:
-            async with MockedCallLater(t):
+    async def test_works(self):
+        with thp.FakeTime() as t:
+            async with thp.MockedCallLater(t):
                 waiter = hp.create_future()
                 call_later(5, waiter.set_result, True)
                 assert await waiter is True
                 assert time.time() == 5
 
-    async def test_does_the_calls_in_order(self, FakeTime, MockedCallLater):
-        with FakeTime() as t:
-            async with MockedCallLater(t):
+    async def test_does_the_calls_in_order(self):
+        with thp.FakeTime() as t:
+            async with thp.MockedCallLater(t):
                 assert time.time() == 0
 
                 called = []
@@ -38,9 +39,9 @@ class TestMockedCalledLater:
 
                 assert called == [(0.3, "0.3"), (1, "1"), (2, "2"), (5, "5")]
 
-    async def test_can_cancel_handles(self, FakeTime, MockedCallLater):
-        with FakeTime() as t:
-            async with MockedCallLater(t) as m:
+    async def test_can_cancel_handles(self):
+        with thp.FakeTime() as t:
+            async with thp.MockedCallLater(t) as m:
                 info = {"handle": None}
 
                 def nxt(*args):

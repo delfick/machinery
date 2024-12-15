@@ -7,6 +7,7 @@ from unittest import mock
 import pytest
 
 from machinery import helpers as hp
+from machinery import test_helpers as thp
 
 
 class C:
@@ -1006,9 +1007,7 @@ class TestUsingResultStreamer:
 
         return expected
 
-    async def test_streams_results_from_coroutines_and_async_generators(
-        self, final_future, CTX, FutureDominoes
-    ):
+    async def test_streams_results_from_coroutines_and_async_generators(self, final_future, CTX):
         info = {"num": 0, "done": []}
 
         def make_on_done(index):
@@ -1018,7 +1017,7 @@ class TestUsingResultStreamer:
 
             return on_done
 
-        async with FutureDominoes(expected=14) as futs:
+        async with thp.FutureDominoes(expected=14) as futs:
             error_catcher = []
             streamer = hp.ResultStreamer(final_future, error_catcher=error_catcher)
 

@@ -3,6 +3,7 @@ import asyncio
 import pytest
 
 from machinery import helpers as hp
+from machinery import test_helpers as thp
 
 
 class TestResettableFuture:
@@ -21,10 +22,10 @@ class TestResettableFuture:
         assert isinstance(fut.fut, asyncio.Future)
         assert fut.fut.name == "ResettableFuture(blah)::__init__[fut]"
 
-    async def test_gets_callbacks_from_the_current_future(self, assertFutCallbacks):
+    async def test_gets_callbacks_from_the_current_future(self):
         fut = hp.ResettableFuture()
         assert len(fut._callbacks) == 1
-        assertFutCallbacks(fut, hp.silent_reporter)
+        thp.assertFutCallbacks(fut, hp.silent_reporter)
         assert fut._callbacks == fut.fut._callbacks
 
     async def test_knows_if_the_future_is_done(self):
@@ -157,9 +158,7 @@ class TestResettableFuture:
         assert repr(fut) == "<ResettableFuture#hello((pending))>"
 
     class TestReset:
-        async def test_does_nothing_if_the_future_hasnt_been_resolved_yet(
-            self, assertFutCallbacks
-        ):
+        async def test_does_nothing_if_the_future_hasnt_been_resolved_yet(self):
             fut = hp.ResettableFuture()
             f = fut.fut
 
@@ -170,37 +169,37 @@ class TestResettableFuture:
 
             cb = lambda res: called.append("DONE1")
             fut.add_done_callback(cb)
-            assertFutCallbacks(f, cb, hp.silent_reporter)
-            assertFutCallbacks(fut, cb, hp.silent_reporter)
+            thp.assertFutCallbacks(f, cb, hp.silent_reporter)
+            thp.assertFutCallbacks(fut, cb, hp.silent_reporter)
 
             fut.reset()
-            assertFutCallbacks(f, cb, hp.silent_reporter)
-            assertFutCallbacks(fut, cb, hp.silent_reporter)
+            thp.assertFutCallbacks(f, cb, hp.silent_reporter)
+            thp.assertFutCallbacks(fut, cb, hp.silent_reporter)
 
             await asyncio.sleep(0)
             assert called == []
-            assertFutCallbacks(f, cb, hp.silent_reporter)
-            assertFutCallbacks(fut, cb, hp.silent_reporter)
+            thp.assertFutCallbacks(f, cb, hp.silent_reporter)
+            thp.assertFutCallbacks(fut, cb, hp.silent_reporter)
 
             fut.set_result(True)
             await asyncio.sleep(0)
             assert called == ["DONE1"]
-            assertFutCallbacks(f)
-            assertFutCallbacks(fut)
+            thp.assertFutCallbacks(f)
+            thp.assertFutCallbacks(fut)
 
-        async def test_can_force_the_future_to_be_closed(self, assertFutCallbacks):
+        async def test_can_force_the_future_to_be_closed(self):
             fut = hp.ResettableFuture()
             f = fut.fut
 
             called = []
             cb = lambda res: called.append("DONE1")
             fut.add_done_callback(cb)
-            assertFutCallbacks(f, cb, hp.silent_reporter)
-            assertFutCallbacks(fut, cb, hp.silent_reporter)
+            thp.assertFutCallbacks(f, cb, hp.silent_reporter)
+            thp.assertFutCallbacks(fut, cb, hp.silent_reporter)
 
             fut.reset(force=True)
             await asyncio.sleep(0)
             assert fut.fut is not f
             assert called == ["DONE1"]
-            assertFutCallbacks(fut.fut, hp.silent_reporter)
-            assertFutCallbacks(fut, hp.silent_reporter)
+            thp.assertFutCallbacks(fut.fut, hp.silent_reporter)
+            thp.assertFutCallbacks(fut, hp.silent_reporter)

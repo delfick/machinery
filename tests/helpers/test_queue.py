@@ -5,6 +5,7 @@ from queue import Queue as NormalQueue
 import pytest
 
 from machinery import helpers as hp
+from machinery import test_helpers as thp
 
 
 @pytest.fixture()
@@ -17,10 +18,10 @@ def final_future():
 
 
 class TestQueue:
-    def test_takes_in_a_final_future(self, final_future, child_future_of):
+    def test_takes_in_a_final_future(self, final_future):
         queue = hp.Queue(final_future)
 
-        compare = child_future_of(final_future)
+        compare = thp.child_future_of(final_future)
         assert queue.final_future == compare
 
         assert hp.fut_has_callback(queue.final_future, queue._stop_waiter)
@@ -257,10 +258,10 @@ class TestQueue:
 
 
 class TestSyncQueue:
-    def test_takes_in_a_final_future(self, final_future, child_future_of):
+    def test_takes_in_a_final_future(self, final_future):
         queue = hp.SyncQueue(final_future)
 
-        compare = child_future_of(final_future)
+        compare = thp.child_future_of(final_future)
         assert queue.final_future == compare
         assert queue.timeout == 0.05
 

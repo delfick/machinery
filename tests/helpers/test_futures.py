@@ -6,6 +6,7 @@ from unittest import mock
 import pytest
 
 from machinery import helpers as hp
+from machinery import test_helpers as thp
 
 
 @pytest.fixture()
@@ -102,21 +103,21 @@ class TestAsyncWithTimeout:
 
 
 class TestAsyncAsBackground:
-    async def test_runs_the_coroutine_in_the_background(self, assertFutCallbacks):
+    async def test_runs_the_coroutine_in_the_background(self):
         async def func(one, two, three=None):
             return f"{one}.{two}.{three}"
 
         t = hp.async_as_background(func(6, 5, three=9))
-        assertFutCallbacks(t, hp.reporter)
+        thp.assertFutCallbacks(t, hp.reporter)
         assert isinstance(t, asyncio.Task)
         assert await t == "6.5.9"
 
-    async def test_uses_silent_reporter_if_silent_is_True(self, assertFutCallbacks):
+    async def test_uses_silent_reporter_if_silent_is_True(self):
         async def func(one, two, three=None):
             return f"{one}.{two}.{three}"
 
         t = hp.async_as_background(func(6, 5, three=9), silent=True)
-        assertFutCallbacks(t, hp.silent_reporter)
+        thp.assertFutCallbacks(t, hp.silent_reporter)
         assert isinstance(t, asyncio.Task)
         assert await t == "6.5.9"
 

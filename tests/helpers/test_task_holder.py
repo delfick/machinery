@@ -3,6 +3,7 @@ import asyncio
 import pytest
 
 from machinery import helpers as hp
+from machinery import test_helpers as thp
 
 
 @pytest.fixture()
@@ -15,10 +16,10 @@ def final_future():
 
 
 class TestTaskHolder:
-    def test_takes_in_a_final_future(self, final_future, child_future_of):
+    def test_takes_in_a_final_future(self, final_future):
         holder = hp.TaskHolder(final_future)
         assert holder.ts == []
-        assert holder.final_future == child_future_of(final_future)
+        assert holder.final_future == thp.child_future_of(final_future)
 
     async def test_can_take_in_tasks(self, final_future):
         called = []
@@ -231,11 +232,9 @@ class TestTaskHolder:
             await asyncio.sleep(0)
             assert called == ["ONE", "TWO", "CANC_ONE", "FIN_ONE", "DONE_TWO", "FIN_TWO"]
 
-    async def test_doesnt_lose_tasks_from_race_condition(
-        self, FakeTime, MockedCallLater, final_future
-    ):
-        with FakeTime() as t:
-            async with MockedCallLater(t):
+    async def test_doesnt_lose_tasks_from_race_condition(self, final_future):
+        with thp.FakeTime() as t:
+            async with thp.MockedCallLater(t):
                 called = []
                 made = {}
 
