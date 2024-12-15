@@ -2,6 +2,7 @@ import asyncio
 import inspect
 import time
 from collections import defaultdict
+from contextvars import Context
 from unittest import mock
 
 from . import helpers as hp
@@ -352,20 +353,12 @@ def child_future_of(fut):
 def assertFutCallbacks(fut, *cbs, exhaustive=False):
     callbacks = fut._callbacks
 
-    try:
-        from contextvars import Context
-    except ImportError:
-        Context = None
-
     if not cbs:
-        if Context is not None:
-            if callbacks:
-                assert len(callbacks) == 1, f"Expect only one context callback: got {callbacks}"
-                assert isinstance(
-                    callbacks[0], Context
-                ), f"Expected just a context callback: got {callbacks}"
-        else:
-            assert callbacks == [], f"Expected no callbacks, got {callbacks}"
+        if callbacks:
+            assert len(callbacks) == 1, f"Expect only one context callback: got {callbacks}"
+            assert isinstance(
+                callbacks[0], Context
+            ), f"Expected just a context callback: got {callbacks}"
 
         return
 
@@ -377,12 +370,12 @@ def assertFutCallbacks(fut, *cbs, exhaustive=False):
 
     for cb in callbacks:
         if type(cb) is tuple:
-            if len(cb) == 2 and Context and isinstance(cb[1], Context):
+            if len(cb) == 2 and isinstance(cb[1], Context):
                 cb = cb[0]
             else:
                 assert False, f"Got a tuple instead of a callback, {cb} in {callbacks}"
 
-        if not Context or not isinstance(cb, Context):
+        if not isinstance(cb, Context):
             counts[cb] += 1
 
     for cb in cbs:
