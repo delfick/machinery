@@ -34,7 +34,6 @@ class TestCreatingAFuture:
 
 class TestFutHasCallback:
     async def test_says_no_if_fut_has_no_callbacks(self):
-
         def func():
             pass
 
@@ -42,7 +41,6 @@ class TestFutHasCallback:
         assert not hp.fut_has_callback(fut, func)
 
     async def test_says_no_if_it_has_other_callbacks(self):
-
         def func1():
             pass
 
@@ -54,7 +52,6 @@ class TestFutHasCallback:
         assert not hp.fut_has_callback(fut, func2)
 
     async def test_says_yes_if_we_have_the_callback(self):
-
         def func1():
             pass
 
@@ -69,6 +66,7 @@ class TestFutHasCallback:
         fut.add_done_callback(func2)
         assert hp.fut_has_callback(fut, func2)
 
+
 class TestAsyncWithTimeout:
     async def test_returns_the_result_of_waiting_on_the_coroutine(self):
         val = str(uuid.uuid1())
@@ -80,7 +78,6 @@ class TestAsyncWithTimeout:
         assert res == val
 
     async def test_cancels_the_coroutine_if_it_doesnt_respond(self):
-
         async def func():
             await asyncio.sleep(2)
 
@@ -103,11 +100,11 @@ class TestAsyncWithTimeout:
             await hp.async_with_timeout(func(), timeout=0.1, timeout_error=error)
         assert time.time() - start < 0.5
 
+
 class TestAsyncAsBackground:
     async def test_runs_the_coroutine_in_the_background(self, assertFutCallbacks):
-
         async def func(one, two, three=None):
-            return "{0}.{1}.{2}".format(one, two, three)
+            return f"{one}.{two}.{three}"
 
         t = hp.async_as_background(func(6, 5, three=9))
         assertFutCallbacks(t, hp.reporter)
@@ -115,14 +112,14 @@ class TestAsyncAsBackground:
         assert await t == "6.5.9"
 
     async def test_uses_silent_reporter_if_silent_is_True(self, assertFutCallbacks):
-
         async def func(one, two, three=None):
-            return "{0}.{1}.{2}".format(one, two, three)
+            return f"{one}.{two}.{three}"
 
         t = hp.async_as_background(func(6, 5, three=9), silent=True)
         assertFutCallbacks(t, hp.silent_reporter)
         assert isinstance(t, asyncio.Task)
         assert await t == "6.5.9"
+
 
 class TestSilentReporter:
     async def test_does_nothing_if_the_future_was_cancelled(self):
@@ -140,6 +137,7 @@ class TestSilentReporter:
         fut.set_result(mock.Mock(name="result"))
         assert hp.silent_reporter(fut) is True
 
+
 class TestReporter:
     async def test_does_nothing_if_the_future_was_cancelled(self):
         fut = hp.create_future()
@@ -155,6 +153,7 @@ class TestReporter:
         fut = hp.create_future()
         fut.set_result(mock.Mock(name="result"))
         assert hp.reporter(fut) is True
+
 
 class TestTransferResult:
     async def test_works_as_a_done_callback(self, loop):
@@ -241,6 +240,7 @@ class TestTransferResult:
             hp.transfer_result(fut, errors_only=False)(res)
             assert fut.result() == [1, 2]
 
+
 class TestNoncancelledResultsFromFuts:
     async def test_returns_results_from_done_futures_that_arent_cancelled(self):
         fut1 = hp.create_future()
@@ -316,8 +316,8 @@ class TestNoncancelledResultsFromFuts:
             [result2],
         )
 
-class TestFindAndApplyResult:
 
+class TestFindAndApplyResult:
     @pytest.fixture()
     def V(self):
         class V:
@@ -444,6 +444,7 @@ class TestFindAndApplyResult:
             assert not f.done()
         assert not V.final_fut.done()
 
+
 class TestWaitingForAllFutures:
     async def test_does_nothing_if_there_are_no_futures(self):
         await hp.wait_for_all_futures()
@@ -478,6 +479,7 @@ class TestWaitingForAllFutures:
         await w
 
         assert not any(f._callbacks for f in (fut1, fut2, fut3, fut4))
+
 
 class TestWaitingForFirstFuture:
     async def test_does_nothing_if_there_are_no_futures(self):
@@ -549,6 +551,7 @@ class TestWaitingForFirstFuture:
         assert not fut1._callbacks
         assert all(len(f._callbacks) == 1 for f in (fut2, fut3))
 
+
 class TestCancelFuturesAndWait:
     async def test_does_nothing_if_there_are_no_futures(self):
         await hp.cancel_futures_and_wait()
@@ -587,6 +590,7 @@ class TestCancelFuturesAndWait:
         await asyncio.sleep(0.01)
         await hp.cancel_futures_and_wait(fut1, fut2, fut3)
         assert sorted(called) == ["run1", "run2"]
+
 
 class TestEnsuringAexit:
     async def test_ensures_aexit_is_called_on_exception(self):

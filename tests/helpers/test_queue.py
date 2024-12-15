@@ -255,6 +255,7 @@ class TestQueue:
 
             assert found == list(range(10))
 
+
 class TestSyncQueue:
     def test_takes_in_a_final_future(self, final_future, child_future_of):
         queue = hp.SyncQueue(final_future)
@@ -398,7 +399,6 @@ class TestSyncQueue:
             assert found == list(range(10))
 
     class TestGettingAllResultsWhenEmptyOnFinished:
-
         async def test_can_get_results_until_final_future_is_done(self, final_future):
             wait = hp.create_future()
 

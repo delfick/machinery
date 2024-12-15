@@ -728,7 +728,12 @@ class ResultStreamer(AsyncCMMixin):
             return f"<Result {status}: {self.value}: {self.context}>"
 
     def __init__(
-        self, final_future, *, error_catcher=None, exceptions_only_to_error_catcher=False, name=None
+        self,
+        final_future,
+        *,
+        error_catcher=None,
+        exceptions_only_to_error_catcher=False,
+        name=None,
     ):
         self.name = name
         self.final_future = ChildOfFuture(
@@ -1040,7 +1045,9 @@ def async_as_background(coroutine, silent=False):
     return t
 
 
-async def async_with_timeout(coroutine, *, timeout=10, timeout_error=None, silent=False, name=None):
+async def async_with_timeout(
+    coroutine, *, timeout=10, timeout_error=None, silent=False, name=None
+):
     """
     Run a coroutine as a task until it's complete or times out.
 
@@ -1225,7 +1232,7 @@ class memoized_property(tp.Generic[T]):
         self.func = func
         self.name = func.__name__
         self.__doc__ = func.__doc__
-        self.cache_name = "_{0}".format(self.name)
+        self.cache_name = f"_{self.name}"
 
     def __get__(self, instance: object = None, owner: object = None) -> T:
         if instance is None:

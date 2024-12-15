@@ -4,6 +4,7 @@ import pytest
 
 from machinery import helpers as hp
 
+
 class TestResettableFuture:
     async def test_ensure_future_returns_the_ResettableFuture_as_is(self):
         fut = hp.ResettableFuture()

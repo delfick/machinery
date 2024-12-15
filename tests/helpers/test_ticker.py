@@ -3,8 +3,8 @@ import time
 
 from machinery import helpers as hp
 
-class TestTick:
 
+class TestTick:
     async def test_keeps_yielding_such_that_yields_are_every_apart(
         self, FakeTime, MockedCallLater
     ):
@@ -83,7 +83,6 @@ class TestTick:
     async def test_keeps_yielding_until_max_time_or_max_iterations(
         self, FakeTime, MockedCallLater
     ):
-
         with FakeTime() as t:
             async with MockedCallLater(t):
                 called = []
@@ -154,8 +153,8 @@ class TestTick:
         assert called == [0, 3, 6, 9, 12]
         assert m.called_times == [3, 6, 9, 12]
 
-class TestATicker:
 
+class TestATicker:
     async def test_can_change_the_after_permanently(self, FakeTime, MockedCallLater):
         called = []
 

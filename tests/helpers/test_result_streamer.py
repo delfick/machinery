@@ -61,7 +61,6 @@ class TestResultStreamer:
         assert streamer.final_future.cancelled()
 
     class TestAddGenerator:
-
         @pytest.fixture()
         async def V(self):
             class V:
@@ -90,7 +89,6 @@ class TestResultStreamer:
                 await v.streamer.finish(*exc_info)
 
         async def test_adds_it_as_a_coroutine(self, V):
-
             async def gen():
                 yield 1
                 yield 2
@@ -192,7 +190,6 @@ class TestResultStreamer:
             ]
 
     class TestAddCoroutine:
-
         @pytest.fixture()
         async def V(self):
             class V:
@@ -245,7 +242,6 @@ class TestResultStreamer:
             add_task.assert_called_once_with(mock.ANY, context=None, on_done=None, force=False)
 
     class TestAddValue:
-
         @pytest.fixture()
         async def V(self):
             class V:
@@ -305,7 +301,6 @@ class TestResultStreamer:
             assert found == [(True, "ADDER", None), (True, 1, "adder"), (True, 2, "adder")]
 
     class TestAddTask:
-
         @pytest.fixture()
         async def make_streamer(self):
             @hp.asynccontextmanager
@@ -340,7 +335,6 @@ class TestResultStreamer:
         async def test_calls_error_catcher_with_CancelledError_if_the_task_gets_cancelled(
             self, make_streamer
         ):
-
             async def func():
                 await asyncio.sleep(20)
 
@@ -601,7 +595,6 @@ class TestResultStreamer:
             finish.assert_called_once_with(asyncio.CancelledError, mock.ANY, mock.ANY)
 
     class TestFinishingByFinalFuture:
-
         async def test_stops_retrieving_if_there_is_results_left_to_yield(self):
             called = []
 
@@ -707,8 +700,8 @@ class TestResultStreamer:
             for name, cancelled in expected_cancelled.items():
                 assert tasks[name].cancelled() == cancelled, name
 
-class TestUsingResultStreamer:
 
+class TestUsingResultStreamer:
     @pytest.fixture()
     def final_future(self):
         fut = hp.create_future()
@@ -848,7 +841,9 @@ class TestUsingResultStreamer:
                 await add_coro_for_gen1_of_gen2()
 
             XS.g2_g1 = CTX.Gen("gen1_for_g2", 2)
-            await streamer.add_generator(gen1_for_gen2(), context=XS.g2_g1, on_done=make_on_done(4))
+            await streamer.add_generator(
+                gen1_for_gen2(), context=XS.g2_g1, on_done=make_on_done(4)
+            )
 
         ##########
         ## coroutine for sub generator 2 of generator 2
@@ -877,7 +872,9 @@ class TestUsingResultStreamer:
                 yield "r_g2g2_last"
 
             XS.g2_g2 = CTX.Gen("gen2_for_g2", 2)
-            await streamer.add_generator(gen2_for_gen2(), context=XS.g2_g2, on_done=make_on_done(9))
+            await streamer.add_generator(
+                gen2_for_gen2(), context=XS.g2_g2, on_done=make_on_done(9)
+            )
 
         ##########
         ## sub coroutine for Second generator

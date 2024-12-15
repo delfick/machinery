@@ -6,6 +6,7 @@ import pytest
 
 from machinery import helpers as hp
 
+
 class TestStopAsyncGenerator:
     async def test_can_cancel_a_generator(self):
         called = []
@@ -67,7 +68,6 @@ class TestStopAsyncGenerator:
         ]
 
     async def test_works_if_generator_is_already_complete(self):
-
         async def d():
             yield True
 
@@ -78,7 +78,6 @@ class TestStopAsyncGenerator:
         await hp.stop_async_generator(gen)
 
     async def test_works_if_generator_is_already_complete_by_cancellation(self):
-
         async def d():
             fut = hp.create_future()
             fut.cancel()
@@ -93,7 +92,6 @@ class TestStopAsyncGenerator:
         await hp.stop_async_generator(gen)
 
     async def test_works_if_generator_is_already_complete_by_exception(self):
-
         async def d():
             raise ValueError("NOPE")
             yield True
@@ -106,7 +104,6 @@ class TestStopAsyncGenerator:
         await hp.stop_async_generator(gen)
 
     async def test_works_if_generator_is_half_complete(self):
-
         called = []
 
         async def d():

@@ -264,14 +264,14 @@ class FutureDominoes(hp.AsyncCMMixin):
         async with self.hp.tick(0, min_wait=0) as ticks:
             async for i, _ in ticks:
                 await self.hp.wait_for_all_futures(self.retrieved[i], self.futs[i])
-                print(f"Waited for Domino {i}")
+                print(f"Waited for Domino {i}")  # noqa: T201
 
                 self.upto = i
 
                 await self._allow_real_loop()
 
                 if i >= self.expected:
-                    print("Finished knocking over dominoes")
+                    print("Finished knocking over dominoes")  # noqa: T201
                     if not self.finished.done():
                         self.finished.set_result(True)
 

@@ -5,9 +5,9 @@ import pytest
 
 from machinery import helpers as hp
 
+
 class TestFutureToString:
     def test_just_reprs_a_not_future(self):
-
         class Thing:
             def __repr__(s):
                 return "<REPR THING>"
@@ -48,6 +48,7 @@ class TestFutureToString:
         fut.set_result(False)
         assert hp.fut_to_string(fut) == "<Future#None(result)>"
 
+
 class TestAddError:
     def test_calls_the_error_catcher_with_the_error_if_its_a_callable(self):
         error = mock.Mock(name="error")
@@ -67,6 +68,7 @@ class TestAddError:
         hp.add_error(catcher, error)
         assert catcher == set([error])
 
+
 class TestATempFile:
     def test_gives_us_the_tmpfile(self):
         with hp.a_temp_file() as fle:
@@ -81,6 +83,7 @@ class TestATempFile:
             fle.close()
             os.remove(fle.name)
         assert not os.path.exists(fle.name)
+
 
 class TestJustLogExceptions:
     def test_logs_exceptions(self):
@@ -123,6 +126,7 @@ class TestJustLogExceptions:
 
         log.assert_not_called()
 
+
 class TestNestedDictRetrieve:
     def test_returns_us_the_dflt_if_we_cant_find_the_key(self):
         data = {"one": {"two": {"three": 3}}}
@@ -143,6 +147,7 @@ class TestNestedDictRetrieve:
         assert hp.nested_dict_retrieve(data, ["one"], dflt) == {"two": {"three": 3}}
         assert hp.nested_dict_retrieve(data, ["one", "two"], dflt) == {"three": 3}
         assert hp.nested_dict_retrieve(data, ["one", "two", "three"], dflt) == 3
+
 
 class TestMemoizedProperty:
     def test_caches_on_the_instance(self):
