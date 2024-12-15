@@ -1,5 +1,3 @@
-# coding: spec
-
 import time
 
 from machinery import helpers as hp
@@ -9,9 +7,9 @@ def call_later(*args):
     return hp.get_event_loop().call_later(*args)
 
 
-describe "MockedCalledLater":
+class TestMockedCalledLater:
 
-    async it "works", FakeTime, MockedCallLater:
+    async def test_works(self, FakeTime, MockedCallLater):
         with FakeTime() as t:
             async with MockedCallLater(t):
                 waiter = hp.create_future()
@@ -19,7 +17,7 @@ describe "MockedCalledLater":
                 assert await waiter is True
                 assert time.time() == 5
 
-    async it "does the calls in order", FakeTime, MockedCallLater:
+    async def test_does_the_calls_in_order(self, FakeTime, MockedCallLater):
         with FakeTime() as t:
             async with MockedCallLater(t):
                 assert time.time() == 0
@@ -41,7 +39,7 @@ describe "MockedCalledLater":
 
                 assert called == [(0.3, "0.3"), (1, "1"), (2, "2"), (5, "5")]
 
-    async it "can cancel handles", FakeTime, MockedCallLater:
+    async def test_can_cancel_handles(self, FakeTime, MockedCallLater):
         with FakeTime() as t:
             async with MockedCallLater(t) as m:
                 info = {"handle": None}
