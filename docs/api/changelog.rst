@@ -9,6 +9,7 @@ Changelog
     * Improved hp.memoized_property and changed it so that it requires
       an explicit ``_memoized_cache`` property on the class to contain
       the cached information.
+    * Removed hp.ExceptionGroup in favour of python built in ExceptionGroup
 
 .. _release-0.1.1:
 

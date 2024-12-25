@@ -313,10 +313,10 @@ class TestNoncancelledResultsFromFuts:
         fut4.set_result(result2)
         fut5.set_exception(error2)
 
-        assert hp.noncancelled_results_from_futs([fut1, fut2, fut3, fut4, fut5]) == (
-            hp.ExceptionGroup(_errors=[error1, error2]),
-            [result2],
-        )
+        result = hp.noncancelled_results_from_futs([fut1, fut2, fut3, fut4, fut5])
+        assert isinstance(result[0], ExceptionGroup)
+        assert result[0].exceptions == (error1, error2)
+        assert result[1] == [result2]
 
 
 class TestFindAndApplyResult:
@@ -397,10 +397,16 @@ class TestFindAndApplyResult:
 
         assert V.fut1.exception() is error2
         assert V.fut2.exception() is error1
-        assert V.fut3.exception() == hp.ExceptionGroup(_errors=[error2, error1])
+
+        exception_3 = V.fut3.exception()
+        assert isinstance(exception_3, ExceptionGroup)
+        assert exception_3.exceptions == (error2, error1)
+
         assert V.fut4.cancelled()
 
-        assert V.final_fut.exception() == hp.ExceptionGroup(_errors=[error2, error1])
+        exception_final = V.final_fut.exception()
+        assert isinstance(exception_final, ExceptionGroup)
+        assert exception_final.exceptions == (error2, error1)
 
     async def test_sets_results_if_one_has_a_result(self, V):
         result = mock.Mock(name="result")

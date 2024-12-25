@@ -23,15 +23,6 @@ class Nope:
     pass
 
 
-class ExceptionGroup(Exception):
-    def __init__(self, _errors: list[Exception]):
-        self._errors = _errors
-        super().__init__()
-
-    def __eq__(self, o: object) -> bool:
-        return isinstance(o, ExceptionGroup) and o._errors == self._errors
-
-
 def ensure_aexit(instance):
     """
     Used to make sure a manual async context manager calls ``__aexit__`` if
@@ -1331,7 +1322,7 @@ def noncancelled_results_from_futs(futs):
         if len(errors) == 1:
             errors = errors[0]
         else:
-            errors = ExceptionGroup(_errors=errors)
+            errors = ExceptionGroup("Futures failed", errors)
     else:
         errors = None
 
