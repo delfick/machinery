@@ -1,8 +1,10 @@
 import asyncio
 import inspect
 import time
+import types
 from collections import defaultdict
 from contextvars import Context
+from typing import Self
 from unittest import mock
 
 from . import helpers as hp
@@ -30,7 +32,7 @@ class FakeTime:
     def __enter__(self):
         return self.start()
 
-    def start(self):
+    def start(self) -> Self:
         self.patches.append(mock.patch("time.time", self))
 
         if self.mock_sleep:
@@ -46,7 +48,12 @@ class FakeTime:
     def __exit__(self, exc_typ, exc, tb):
         self.finish(exc_typ, exc, tb)
 
-    def finish(self, exc_typ=None, exc=None, tb=None):
+    def finish(
+        self,
+        exc_typ: type[BaseException] | None = None,
+        exc: BaseException | None = None,
+        tb: types.TracebackType | None = None,
+    ) -> None:
         for p in self.patches:
             p.stop()
 
@@ -61,7 +68,19 @@ class FakeTime:
         await self.original_async_sleep(0.001)
 
 
-class MockedCallLater(hp.AsyncCMMixin):
+class MockedCallLater:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None = None,
+        exc: BaseException | None = None,
+        tb: types.TracebackType | None = None,
+    ) -> None:
+        return await self.finish(exc_type, exc, tb)
+
+    async def __aenter__(self) -> Self:
+        async with hp.ensure_aexit(self):
+            return await self.start()
+
     def __init__(self, t, precision=0.1):
         self.t = t
         self.loop = get_event_loop()
@@ -75,14 +94,19 @@ class MockedCallLater(hp.AsyncCMMixin):
         self.called_times = []
         self.have_call_later = self.hp.ResettableFuture()
 
-    async def start(self):
+    async def start(self) -> Self:
         self.task = self.hp.async_as_background(self._calls())
         self.original_call_later = self.loop.call_later
         self.call_later_patch = mock.patch.object(self.loop, "call_later", self._call_later)
         self.call_later_patch.start()
         return self
 
-    async def finish(self, exc_typ=None, exc=None, tb=None):
+    async def finish(
+        self,
+        exc_typ: type[BaseException] | None = None,
+        exc: BaseException | None = None,
+        tb: types.TracebackType | None = None,
+    ) -> None:
         if self.call_later_patch:
             self.call_later_patch.stop()
         if self.task:
@@ -173,7 +197,7 @@ class MockedCallLater(hp.AsyncCMMixin):
         return executed
 
 
-class FutureDominoes(hp.AsyncCMMixin):
+class FutureDominoes:
     """
     A helper to start a domino of futures.
 
@@ -234,6 +258,18 @@ class FutureDominoes(hp.AsyncCMMixin):
                 ]
     """
 
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None = None,
+        exc: BaseException | None = None,
+        tb: types.TracebackType | None = None,
+    ) -> None:
+        return await self.finish(exc_type, exc, tb)
+
+    async def __aenter__(self) -> Self:
+        async with hp.ensure_aexit(self):
+            return await self.start()
+
     def __init__(self, *, before_next_domino=None, expected):
         self.futs = {}
         self.retrieved = {}
@@ -246,12 +282,17 @@ class FutureDominoes(hp.AsyncCMMixin):
         for i in range(self.expected):
             self.make(i + 1)
 
-    async def start(self):
+    async def start(self) -> Self:
         self._tick = self.hp.async_as_background(self.tick())
         self._tick.add_done_callback(self.hp.transfer_result(self.finished))
         return self
 
-    async def finish(self, exc_typ=None, exc=None, tb=None):
+    async def finish(
+        self,
+        exc_typ: type[BaseException] | None = None,
+        exc: BaseException | None = None,
+        tb: types.TracebackType | None = None,
+    ) -> None:
         if hasattr(self, "_tick"):
             if exc and not self._tick.done():
                 self._tick.cancel()

@@ -8,7 +8,8 @@ import sys
 import tempfile
 import time
 import traceback
-from collections.abc import AsyncIterator
+import types
+from typing import Self
 
 from . import _helpers
 
@@ -16,83 +17,13 @@ log = logging.getLogger("machinery.helpers")
 
 
 memoized_property = _helpers.memoized_property.memoized_property
+ensure_aexit = _helpers.async_mixin.ensure_aexit
 
 
 class Nope:
     """Used to say there was no value"""
 
     pass
-
-
-def ensure_aexit(
-    instance: contextlib.AbstractAsyncContextManager[object],
-) -> contextlib.AbstractAsyncContextManager[None]:
-    """
-    Used to make sure a manual async context manager calls ``__aexit__`` if
-    ``__aenter__`` fails.
-
-    Turns out if ``__aenter__`` raises an exception, then ``__aexit__`` doesn't
-    get called, which is not how I thought that worked for a lot of context
-    managers.
-
-    Usage is as follows:
-
-    .. code-block:: python
-
-        from machinery import helpers as hp
-
-
-        class MyCM:
-            async def __aenter__(self):
-                async with hp.ensure_aexit(self):
-                    return await self.start()
-
-            async def start(self):
-                ...
-
-            async def __aexit__(self, exc_typ, exc, tb):
-                await self.finish(exc_typ, exc, tb)
-
-            async def finish(exc_typ=None, exc=None, tb=None):
-                ...
-    """
-
-    @contextlib.asynccontextmanager
-    async def ensure_aexit_cm() -> AsyncIterator[None]:
-        exc_info = None
-        try:
-            yield
-        except:
-            exc_info = sys.exc_info()
-
-        if exc_info is not None:
-            # aexit doesn't run if aenter raises an exception
-            await instance.__aexit__(*exc_info)
-
-            exc_t, exc, tb = exc_info
-            assert exc_t is not None
-            assert exc is not None
-            assert tb is not None
-
-            exc.__traceback__ = tb
-            raise exc
-
-    return ensure_aexit_cm()
-
-
-class AsyncCMMixin:
-    async def __aenter__(self):
-        async with ensure_aexit(self):
-            return await self.start()
-
-    async def start(self):
-        raise NotImplementedError()
-
-    async def __aexit__(self, exc_typ, exc, tb):
-        return await self.finish(exc_typ, exc, tb)
-
-    async def finish(self, exc_typ=None, exc=None, tb=None):
-        raise NotImplementedError()
 
 
 async def stop_async_generator(gen, provide=None, name=None, exc=None):
@@ -132,7 +63,7 @@ def fut_to_string(f, with_name=True):
     return s
 
 
-class ATicker(AsyncCMMixin):
+class ATicker:
     """
     This object gives you an async generator that yields every ``every``
     seconds, taking into account how long it takes for your code to finish
@@ -211,6 +142,18 @@ class ATicker(AsyncCMMixin):
         If not None, we use this as a semaphore in an async with to pause the ticks
     """
 
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None = None,
+        exc: BaseException | None = None,
+        tb: types.TracebackType | None = None,
+    ) -> None:
+        return await self.finish(exc_type, exc, tb)
+
+    async def __aenter__(self) -> Self:
+        async with ensure_aexit(self):
+            return await self.start()
+
     class Stop(Exception):
         pass
 
@@ -247,7 +190,7 @@ class ATicker(AsyncCMMixin):
             name=f"ATicker({self.name})::__init__[final_future]",
         )
 
-    async def start(self):
+    async def start(self) -> Self:
         self.gen = self.tick()
         return self
 
@@ -258,7 +201,12 @@ class ATicker(AsyncCMMixin):
             )
         return self.gen
 
-    async def finish(self, exc_typ=None, exc=None, tb=None):
+    async def finish(
+        self,
+        exc_typ: type[BaseException] | None = None,
+        exc: BaseException | None = None,
+        tb: types.TracebackType | None = None,
+    ) -> None:
         if hasattr(self, "gen"):
             try:
                 await stop_async_generator(
@@ -425,7 +373,7 @@ def tick(
     return ATicker(every, **kwargs)
 
 
-class TaskHolder(AsyncCMMixin):
+class TaskHolder:
     """
     An object for managing asynchronous coroutines.
 
@@ -488,6 +436,18 @@ class TaskHolder(AsyncCMMixin):
     .. automethod:: finish
     """
 
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None = None,
+        exc: BaseException | None = None,
+        tb: types.TracebackType | None = None,
+    ) -> None:
+        return await self.finish(exc_type, exc, tb)
+
+    async def __aenter__(self) -> Self:
+        async with ensure_aexit(self):
+            return await self.start()
+
     def __init__(self, final_future, *, name=None):
         self.name = name
 
@@ -524,10 +484,15 @@ class TaskHolder(AsyncCMMixin):
         self.ts.append(task)
         return task
 
-    async def start(self):
+    async def start(self) -> Self:
         return self
 
-    async def finish(self, exc_typ=None, exc=None, tb=None):
+    async def finish(
+        self,
+        exc_typ: type[BaseException] | None = None,
+        exc: BaseException | None = None,
+        tb: types.TracebackType | None = None,
+    ) -> None:
         if exc and not self.final_future.done():
             self.final_future.set_exception(exc)
 
@@ -601,7 +566,7 @@ class TaskHolder(AsyncCMMixin):
         self.ts = remaining + [t for t in self.ts if t not in destroyed and t not in remaining]
 
 
-class ResultStreamer(AsyncCMMixin):
+class ResultStreamer:
     """
     An async generator you can add tasks to and results will be streamed as they
     become available.
@@ -694,6 +659,18 @@ class ResultStreamer(AsyncCMMixin):
     .. automethod:: finish
     """
 
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None = None,
+        exc: BaseException | None = None,
+        tb: types.TracebackType | None = None,
+    ) -> None:
+        return await self.finish(exc_type, exc, tb)
+
+    async def __aenter__(self) -> Self:
+        async with ensure_aexit(self):
+            return await self.start()
+
     class GeneratorStopper:
         pass
 
@@ -757,7 +734,7 @@ class ResultStreamer(AsyncCMMixin):
         self._registered = 0
         self.stop_on_completion = False
 
-    async def start(self):
+    async def start(self) -> Self:
         return self
 
     def __aiter__(self):
@@ -881,7 +858,12 @@ class ResultStreamer(AsyncCMMixin):
             if self.stop_on_completion and not self.ts.pending and self._registered <= 0:
                 return
 
-    async def finish(self, exc_typ=None, exc=None, tb=None):
+    async def finish(
+        self,
+        exc_typ: type[BaseException] | None = None,
+        exc: BaseException | None = None,
+        tb: types.TracebackType | None = None,
+    ) -> None:
         self.final_future.cancel()
 
         try:
@@ -1637,7 +1619,12 @@ class SyncQueue:
     def append(self, item):
         self.collection.put(item)
 
-    def finish(self, exc_typ=None, exc=None, tb=None):
+    async def finish(
+        self,
+        exc_typ: type[BaseException] | None = None,
+        exc: BaseException | None = None,
+        tb: types.TracebackType | None = None,
+    ) -> None:
         self.final_future.cancel()
 
     def __iter__(self):
@@ -1716,7 +1703,12 @@ class Queue:
         self.waiter.reset()
         self.waiter.set_result(True)
 
-    async def finish(self, exc_typ=None, exc=None, tb=None):
+    async def finish(
+        self,
+        exc_typ: type[BaseException] | None = None,
+        exc: BaseException | None = None,
+        tb: types.TracebackType | None = None,
+    ) -> None:
         self.final_future.cancel()
 
     def append(self, item):
