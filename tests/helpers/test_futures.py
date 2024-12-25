@@ -1,6 +1,7 @@
 import asyncio
 import time
 import uuid
+from typing import ClassVar
 from unittest import mock
 
 import pytest
@@ -320,13 +321,15 @@ class TestNoncancelledResultsFromFuts:
 
 class TestFindAndApplyResult:
     @pytest.fixture()
-    def V(self):
+    def V(self) -> object:
         class V:
             fut1 = hp.create_future()
             fut2 = hp.create_future()
             fut3 = hp.create_future()
             fut4 = hp.create_future()
             final_fut = hp.create_future()
+
+            _memoized_cache: ClassVar[dict[str, object]] = {}
 
             @hp.memoized_property
             def available_futs(s):

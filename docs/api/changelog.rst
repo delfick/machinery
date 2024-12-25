@@ -3,6 +3,13 @@
 Changelog
 ---------
 
+.. _release-0.2.0:
+
+0.2.0 - TBD
+    * Improved hp.memoized_property and changed it so that it requires
+      an explicit ``_memoized_cache`` property on the class to contain
+      the cached information.
+
 .. _release-0.1.1:
 
 0.1.1 - 15 December 2024

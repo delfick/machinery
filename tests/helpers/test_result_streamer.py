@@ -2,6 +2,8 @@ import asyncio
 import itertools
 import sys
 import traceback
+from collections.abc import AsyncGenerator
+from typing import ClassVar
 from unittest import mock
 
 import pytest
@@ -63,10 +65,11 @@ class TestResultStreamer:
 
     class TestAddGenerator:
         @pytest.fixture()
-        async def V(self):
+        async def V(self) -> AsyncGenerator[object]:
             class V:
                 final_future = hp.create_future()
                 error_catcher = mock.Mock(name="error_catcher")
+                _memoized_cache: ClassVar[dict[str, object]] = {}
 
                 @hp.memoized_property
                 def streamer(s):
@@ -192,9 +195,10 @@ class TestResultStreamer:
 
     class TestAddCoroutine:
         @pytest.fixture()
-        async def V(self):
+        async def V(self) -> AsyncGenerator[object]:
             class V:
                 final_future = hp.create_future()
+                _memoized_cache: ClassVar[dict[str, object]] = {}
 
                 @hp.memoized_property
                 def streamer(s):
@@ -244,9 +248,10 @@ class TestResultStreamer:
 
     class TestAddValue:
         @pytest.fixture()
-        async def V(self):
+        async def V(self) -> AsyncGenerator[object]:
             class V:
                 final_future = hp.create_future()
+                _memoized_cache: ClassVar[dict[str, object]] = {}
 
                 @hp.memoized_property
                 def streamer(s):

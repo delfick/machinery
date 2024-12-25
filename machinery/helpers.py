@@ -5,15 +5,16 @@ import sys
 import tempfile
 import time
 import traceback
-import typing as tp
 from collections import deque
 from contextlib import asynccontextmanager, contextmanager
 from queue import Empty as NormalEmpty
 from queue import Queue as NormalQueue
 
-T = tp.TypeVar("T")
+from . import _helpers
 
 log = logging.getLogger("machinery.helpers")
+
+memoized_property = _helpers.memoized_property.memoized_property
 
 
 class Nope:
@@ -1192,62 +1193,6 @@ async def cancel_futures_and_wait(*futs, name=None):
     await wait_for_all_futures(
         *waiting, name=f"||cancel_futures_and_wait({name})[wait_for_everything]"
     )
-
-
-class memoized_property(tp.Generic[T]):
-    """
-    Decorator to make a descriptor that memoizes it's value
-
-    .. code-block:: python
-
-        from machinery import helpers as hp
-
-
-        class MyClass:
-            @hp.memoized_property
-            def thing(self):
-                return expensive_operation()
-
-        obj = MyClass()
-
-        # Get us the result of expensive operation
-        print(obj.thing)
-
-        # And we get the result again but minus the expensive operation
-        print(obj.thing)
-
-        # We can set our own value
-        object.thing = "overridden"
-        assert object.thing == "overridden"
-
-        # And we can delete what is cached
-        del object.thing
-        assert object.thing == "<result from calling expensive_operation() again>"
-    """
-
-    class Empty:
-        pass
-
-    def __init__(self, func):
-        self.func = func
-        self.name = func.__name__
-        self.__doc__ = func.__doc__
-        self.cache_name = f"_{self.name}"
-
-    def __get__(self, instance: object = None, owner: object = None) -> T:
-        if instance is None:
-            return self  # type: ignore[return-value]
-
-        if getattr(instance, self.cache_name, self.Empty) is self.Empty:
-            setattr(instance, self.cache_name, self.func(instance))
-        return getattr(instance, self.cache_name)
-
-    def __set__(self, instance, value):
-        setattr(instance, self.cache_name, value)
-
-    def __delete__(self, instance):
-        if hasattr(instance, self.cache_name):
-            delattr(instance, self.cache_name)
 
 
 def silent_reporter(res):
