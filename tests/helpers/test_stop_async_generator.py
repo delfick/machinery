@@ -1,5 +1,6 @@
 import asyncio
 import sys
+from collections.abc import AsyncGenerator
 from unittest import mock
 
 import pytest
@@ -8,11 +9,11 @@ from machinery import helpers as hp
 
 
 class TestStopAsyncGenerator:
-    async def test_can_cancel_a_generator(self):
-        called = []
+    async def test_can_cancel_a_generator(self) -> None:
+        called: list[object] = []
         ready = hp.create_future()
 
-        async def d():
+        async def d() -> AsyncGenerator[int]:
             try:
                 called.append("wait")
                 ready.set_result(True)
@@ -37,11 +38,11 @@ class TestStopAsyncGenerator:
             "finally",
         ]
 
-    async def test_can_throw_an_arbitrary_exception_into_the_generator(self):
-        called = []
+    async def test_can_throw_an_arbitrary_exception_into_the_generator(self) -> None:
+        called: list[object] = []
         ready = hp.create_future()
 
-        async def d():
+        async def d() -> AsyncGenerator[int]:
             try:
                 called.append("wait")
                 ready.set_result(True)
@@ -67,8 +68,8 @@ class TestStopAsyncGenerator:
             "finally",
         ]
 
-    async def test_works_if_generator_is_already_complete(self):
-        async def d():
+    async def test_works_if_generator_is_already_complete(self) -> None:
+        async def d() -> AsyncGenerator[bool]:
             yield True
 
         gen = d()
@@ -77,8 +78,8 @@ class TestStopAsyncGenerator:
 
         await hp.stop_async_generator(gen)
 
-    async def test_works_if_generator_is_already_complete_by_cancellation(self):
-        async def d():
+    async def test_works_if_generator_is_already_complete_by_cancellation(self) -> None:
+        async def d() -> AsyncGenerator[bool]:
             fut = hp.create_future()
             fut.cancel()
             await fut
@@ -91,8 +92,8 @@ class TestStopAsyncGenerator:
 
         await hp.stop_async_generator(gen)
 
-    async def test_works_if_generator_is_already_complete_by_exception(self):
-        async def d():
+    async def test_works_if_generator_is_already_complete_by_exception(self) -> None:
+        async def d() -> AsyncGenerator[bool]:
             raise ValueError("NOPE")
             yield True
 
@@ -103,10 +104,10 @@ class TestStopAsyncGenerator:
 
         await hp.stop_async_generator(gen)
 
-    async def test_works_if_generator_is_half_complete(self):
-        called = []
+    async def test_works_if_generator_is_half_complete(self) -> None:
+        called: list[object] = []
 
-        async def d():
+        async def d() -> AsyncGenerator[int]:
             called.append("start")
             try:
                 for i in range(10):
@@ -132,12 +133,12 @@ class TestStopAsyncGenerator:
             await hp.stop_async_generator(gen)
         assert called == ["start", 0, 1, 2, 3, 4, 5, "cancel", "finally"]
 
-    async def test_works_if_generator_is_cancelled_inside(self):
+    async def test_works_if_generator_is_cancelled_inside(self) -> None:
         waiter = hp.create_future()
 
-        called = []
+        called: list[object] = []
 
-        async def d():
+        async def d() -> AsyncGenerator[int]:
             called.append("start")
             try:
                 for i in range(10):
@@ -164,12 +165,12 @@ class TestStopAsyncGenerator:
         assert called == ["start", 0, 1, 2, 3, 4, 5, "cancel", "finally"]
         await hp.stop_async_generator(gen)
 
-    async def test_works_if_generator_is_cancelled_outside(self):
+    async def test_works_if_generator_is_cancelled_outside(self) -> None:
         waiter = hp.create_future()
 
-        called = []
+        called: list[object] = []
 
-        async def d():
+        async def d() -> AsyncGenerator[int]:
             called.append("start")
             try:
                 for i in range(10):
@@ -188,7 +189,7 @@ class TestStopAsyncGenerator:
 
         gen = d()
 
-        async def consume():
+        async def consume() -> None:
             async for i in gen:
                 if i == 5:
                     waiter.set_result(True)

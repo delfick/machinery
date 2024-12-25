@@ -9,12 +9,14 @@ import tempfile
 import time
 import traceback
 import types
-from typing import Self
+from collections.abc import AsyncGenerator
+from typing import Self, TypeVar
 
 from . import _helpers
 
 log = logging.getLogger("machinery.helpers")
 
+T_Send = TypeVar("T_Send")
 
 memoized_property = _helpers.memoized_property.memoized_property
 ensure_aexit = _helpers.async_mixin.ensure_aexit
@@ -26,7 +28,12 @@ class Nope:
     pass
 
 
-async def stop_async_generator(gen, provide=None, name=None, exc=None):
+async def stop_async_generator(
+    gen: AsyncGenerator[object, T_Send | None],
+    provide: T_Send | None = None,
+    name: str | None = None,
+    exc: BaseException | None = None,
+) -> None:
     try:
         try:
             await gen.athrow(exc or asyncio.CancelledError())
