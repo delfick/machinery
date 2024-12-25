@@ -1,5 +1,6 @@
 import asyncio
 import time
+import types
 import uuid
 from typing import ClassVar
 from unittest import mock
@@ -603,19 +604,24 @@ class TestCancelFuturesAndWait:
 
 
 class TestEnsuringAexit:
-    async def test_ensures_aexit_is_called_on_exception(self):
+    async def test_ensures_aexit_is_called_on_exception(self) -> None:
         error = Exception("NOPE")
-        called = []
+        called: list[str] = []
 
         class Thing:
-            async def __aenter__(s):
+            async def __aenter__(s) -> None:
                 called.append("aenter")
                 await s.start()
 
-            async def start(s):
+            async def start(s) -> None:
                 raise error
 
-            async def __aexit__(s, exc_typ, exc, tb):
+            async def __aexit__(
+                s,
+                exc_typ: type[BaseException] | None,
+                exc: BaseException | None,
+                tb: types.TracebackType,
+            ) -> None:
                 called.append("aexit")
                 assert exc is error
 
@@ -631,38 +637,48 @@ class TestEnsuringAexit:
         error = Exception("NOPE")
         called = []
 
-        class Thing:
-            async def __aenter__(s):
+        class Thing2:
+            async def __aenter__(s) -> None:
                 called.append("aenter")
                 async with hp.ensure_aexit(s):
                     await s.start()
 
-            async def start(self):
+            async def start(self) -> None:
                 raise error
 
-            async def __aexit__(s, exc_typ, exc, tb):
+            async def __aexit__(
+                s,
+                exc_typ: type[BaseException] | None,
+                exc: BaseException | None,
+                tb: types.TracebackType | None,
+            ) -> None:
                 called.append("aexit")
                 assert exc is error
 
         with pytest.raises(Exception, match="NOPE"):
-            async with Thing():
+            async with Thing2():
                 called.append("inside")
 
         assert called == ["aenter", "aexit"]
 
-    async def test_doesnt_call_exit_twice_on_success(self):
+    async def test_doesnt_call_exit_twice_on_success(self) -> None:
         called = []
 
         class Thing:
-            async def __aenter__(s):
+            async def __aenter__(s) -> None:
                 called.append("aenter")
                 async with hp.ensure_aexit(s):
                     await s.start()
 
-            async def start(self):
+            async def start(self) -> None:
                 called.append("start")
 
-            async def __aexit__(s, exc_typ, exc, tb):
+            async def __aexit__(
+                s,
+                exc_typ: type[BaseException] | None,
+                exc: BaseException | None,
+                tb: types.TracebackType | None,
+            ) -> None:
                 called.append("aexit")
                 assert exc is None
 

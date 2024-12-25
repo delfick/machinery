@@ -8,6 +8,7 @@ import sys
 import tempfile
 import time
 import traceback
+from collections.abc import AsyncIterator
 
 from . import _helpers
 
@@ -23,7 +24,9 @@ class Nope:
     pass
 
 
-def ensure_aexit(instance):
+def ensure_aexit(
+    instance: contextlib.AbstractAsyncContextManager[object],
+) -> contextlib.AbstractAsyncContextManager[None]:
     """
     Used to make sure a manual async context manager calls ``__aexit__`` if
     ``__aenter__`` fails.
@@ -55,7 +58,7 @@ def ensure_aexit(instance):
     """
 
     @contextlib.asynccontextmanager
-    async def ensure_aexit_cm():
+    async def ensure_aexit_cm() -> AsyncIterator[None]:
         exc_info = None
         try:
             yield
@@ -65,8 +68,14 @@ def ensure_aexit(instance):
         if exc_info is not None:
             # aexit doesn't run if aenter raises an exception
             await instance.__aexit__(*exc_info)
-            exc_info[1].__traceback__ = exc_info[2]
-            raise exc_info[1]
+
+            exc_t, exc, tb = exc_info
+            assert exc_t is not None
+            assert exc is not None
+            assert tb is not None
+
+            exc.__traceback__ = tb
+            raise exc
 
     return ensure_aexit_cm()
 
