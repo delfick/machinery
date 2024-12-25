@@ -10,7 +10,7 @@ import time
 import traceback
 import types
 from collections.abc import AsyncGenerator
-from typing import Self, TypeVar
+from typing import Protocol, Self, TypeVar
 
 from . import _helpers
 
@@ -48,7 +48,11 @@ async def stop_async_generator(
         await gen.aclose()
 
 
-def fut_to_string(f, with_name=True):
+class _WithRepr(Protocol):
+    def __repr__(self) -> str: ...
+
+
+def fut_to_string(f: asyncio.Future[object] | _WithRepr, with_name: bool = True) -> str:
     if not isinstance(f, asyncio.Future):
         s = repr(f)
     else:
