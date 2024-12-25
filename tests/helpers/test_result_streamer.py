@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import itertools
 import sys
 import traceback
@@ -309,7 +310,7 @@ class TestResultStreamer:
     class TestAddTask:
         @pytest.fixture()
         async def make_streamer(self):
-            @hp.asynccontextmanager
+            @contextlib.asynccontextmanager
             async def make_streamer(**kwargs):
                 streamer = None
                 final_future = hp.create_future()

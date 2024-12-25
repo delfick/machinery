@@ -1,18 +1,18 @@
 import asyncio
+import collections
+import contextlib
 import logging
 import os
+import queue as stdqueue
 import sys
 import tempfile
 import time
 import traceback
-from collections import deque
-from contextlib import asynccontextmanager, contextmanager
-from queue import Empty as NormalEmpty
-from queue import Queue as NormalQueue
 
 from . import _helpers
 
 log = logging.getLogger("machinery.helpers")
+
 
 memoized_property = _helpers.memoized_property.memoized_property
 
@@ -54,7 +54,7 @@ def ensure_aexit(instance):
                 ...
     """
 
-    @asynccontextmanager
+    @contextlib.asynccontextmanager
     async def ensure_aexit_cm():
         exc_info = None
         try:
@@ -883,7 +883,7 @@ class ResultStreamer(AsyncCMMixin):
                 await self.queue.finish()
 
 
-@contextmanager
+@contextlib.contextmanager
 def just_log_exceptions(log, *, reraise=None, message="Unexpected error"):
     """
     A context manager that will catch all exceptions and just call::
@@ -929,7 +929,7 @@ def add_error(catcher, error):
         catcher.add(error)
 
 
-@contextmanager
+@contextlib.contextmanager
 def a_temp_file():
     """
     Yield the name of a temporary file and ensure it's removed after use
@@ -1619,7 +1619,7 @@ class SyncQueue:
     def __init__(self, final_future, *, timeout=0.05, empty_on_finished=False, name=None):
         self.name = name
         self.timeout = timeout
-        self.collection = NormalQueue()
+        self.collection = stdqueue.Queue()
         self.final_future = ChildOfFuture(
             final_future, name=f"SyncQueue({self.name})::__init__[final_future]"
         )
@@ -1641,7 +1641,7 @@ class SyncQueue:
 
             try:
                 nxt = self.collection.get(timeout=self.timeout)
-            except NormalEmpty:
+            except stdqueue.Empty:
                 continue
             else:
                 if self.final_future.done():
@@ -1694,7 +1694,7 @@ class Queue:
     def __init__(self, final_future, *, empty_on_finished=False, name=None):
         self.name = name
         self.waiter = ResettableFuture(name=f"Queue({self.name})::__init__[waiter]")
-        self.collection = deque()
+        self.collection = collections.deque()
         self.final_future = ChildOfFuture(
             final_future, name=f"Queue({self.name})::__init__[final_future]"
         )
