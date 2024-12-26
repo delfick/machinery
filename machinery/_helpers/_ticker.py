@@ -1,5 +1,7 @@
+import asyncio
 import time
 import types
+from collections.abc import AsyncGenerator
 from typing import Self
 
 from . import _async_mixin, _futures, _task_holder
@@ -101,15 +103,15 @@ class ATicker:
 
     def __init__(
         self,
-        every,
+        every: int,
         *,
-        final_future=None,
-        max_iterations=None,
-        max_time=None,
-        min_wait=0.1,
-        pauser=None,
-        name=None,
-    ):
+        final_future: asyncio.Future[object] | None = None,
+        max_iterations: int | None = None,
+        max_time: int | None = None,
+        min_wait: float = 0.1,
+        pauser: asyncio.Semaphore | None = None,
+        name: str | None = None,
+    ) -> None:
         self.name = name
         self.every = every
         self.pauser = pauser
@@ -122,8 +124,8 @@ class ATicker:
             if self.min_wait is False:
                 self.min_wait = 0
 
-        self.handle = None
-        self.expected = None
+        self.handle: asyncio.Handle | None = None
+        self.expected: float | None = None
 
         self.waiter = _futures.ResettableFuture(name=f"ATicker({self.name})::__init__[waiter]")
         self.final_future = _futures.ChildOfFuture(
@@ -136,7 +138,7 @@ class ATicker:
         self.gen = self.tick()
         return self
 
-    def __aiter__(self):
+    def __aiter__(self) -> AsyncGenerator[tuple[int, float], None]:
         if not hasattr(self, "gen"):
             raise Exception(
                 "The ticker must be used as a context manager before being used as an async iterator"
@@ -159,7 +161,7 @@ class ATicker:
 
         self.final_future.cancel()
 
-    async def tick(self):
+    async def tick(self) -> AsyncGenerator[tuple[int, float], None]:
         final_handle = None
         if self.max_time:
             final_handle = _futures.get_event_loop().call_later(
@@ -175,7 +177,7 @@ class ATicker:
                 final_handle.cancel()
             self._change_handle()
 
-    def change_after(self, every, *, set_new_every=True):
+    def change_after(self, every: int, *, set_new_every: bool = True) -> None:
         old_every = self.every
         if set_new_every:
             self.every = every
@@ -198,25 +200,27 @@ class ATicker:
         else:
             self._change_handle(_futures.get_event_loop().call_later(diff, self._waited))
 
-    def _change_handle(self, handle=None):
+    def _change_handle(self, handle: asyncio.Handle | None = None) -> None:
         if self.handle:
             self.handle.cancel()
         self.handle = handle
 
-    def _waited(self):
+    def _waited(self) -> None:
         self.waiter.reset()
         self.waiter.set_result(True)
 
-    async def _wait_for_next(self):
-        if self.pauser is None or not self.pauser.locked():
+    async def _wait_for_next(self) -> None:
+        pauser = self.pauser
+
+        if pauser is None or not pauser.locked():
             return await _futures.wait_for_first_future(
                 self.final_future,
                 self.waiter,
                 name=f"ATicker({self.name})::_wait_for_next[without_pause]",
             )
 
-        async def pause():
-            async with self.pauser:
+        async def pause() -> None:
+            async with pauser:
                 pass
 
         ts_final_future = _futures.ChildOfFuture(
@@ -227,7 +231,7 @@ class ATicker:
             ts.add(pause())
             ts.add_task(self.waiter)
 
-    async def _tick(self):
+    async def _tick(self) -> AsyncGenerator[tuple[int, float], None]:
         start = time.time()
         iteration = 0
         self.expected = start
@@ -278,15 +282,15 @@ class ATicker:
 
 
 def tick(
-    every,
+    every: int,
     *,
-    final_future=None,
-    max_iterations=None,
-    max_time=None,
-    min_wait=0.1,
-    name=None,
-    pauser=None,
-):
+    final_future: asyncio.Future[object] | None = None,
+    max_iterations: int | None = None,
+    max_time: int | None = None,
+    min_wait: float = 0.1,
+    name: str | None = None,
+    pauser: asyncio.Semaphore | None = None,
+) -> ATicker:
     """
     .. code-block:: python
 
@@ -305,13 +309,12 @@ def tick(
     If you want control of the ticker during the iteration, then use
     :class:`ATicker` directly.
     """
-    kwargs = {
-        "final_future": final_future,
-        "max_iterations": max_iterations,
-        "max_time": max_time,
-        "min_wait": min_wait,
-        "pauser": pauser,
-        "name": f"||tick({name})",
-    }
-
-    return ATicker(every, **kwargs)
+    return ATicker(
+        every,
+        final_future=final_future,
+        max_iterations=max_iterations,
+        max_time=max_time,
+        min_wait=min_wait,
+        pauser=pauser,
+        name=f"||tick({name})",
+    )

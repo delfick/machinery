@@ -6,7 +6,7 @@ from machinery import test_helpers as thp
 
 
 class TestTick:
-    async def test_keeps_yielding_such_that_yields_are_every_apart(self):
+    async def test_keeps_yielding_such_that_yields_are_every_apart(self) -> None:
         called = []
 
         with thp.FakeTime() as t:
@@ -20,7 +20,7 @@ class TestTick:
         assert called == [(1, 3, 0), (2, 3, 3), (3, 3, 6), (4, 3, 9), (5, 3, 12)]
         assert m.called_times == [3, 6, 9, 12]
 
-    async def test_works_with_0_every(self):
+    async def test_works_with_0_every(self) -> None:
         called = []
 
         with thp.FakeTime() as t:
@@ -35,7 +35,7 @@ class TestTick:
 
         assert called == [(1, 0, 0), (2, 0, 0), (3, 0, 0), (4, 0, 2.0), (5, 0, 2.0), (6, 0, 2.0)]
 
-    async def test_works_with_0_every_and_nonzero_min_wait(self):
+    async def test_works_with_0_every_and_nonzero_min_wait(self) -> None:
         called = []
 
         with thp.FakeTime() as t:
@@ -57,7 +57,7 @@ class TestTick:
             (6, 0.1, 2.4),
         ]
 
-    async def test_keeps_yielding_until_max_iterations(self):
+    async def test_keeps_yielding_until_max_iterations(self) -> None:
         called = []
 
         with thp.FakeTime() as t:
@@ -68,7 +68,7 @@ class TestTick:
 
         assert called == [1, 2, 3, 4, 5]
 
-    async def test_keeps_yielding_until_max_time(self):
+    async def test_keeps_yielding_until_max_time(self) -> None:
         called = []
 
         with thp.FakeTime() as t:
@@ -79,7 +79,7 @@ class TestTick:
 
         assert called == [(1, 0), (2, 3), (3, 6), (4, 9), (5, 12), (6, 15), (7, 18)]
 
-    async def test_keeps_yielding_until_max_time_or_max_iterations(self):
+    async def test_keeps_yielding_until_max_time_or_max_iterations(self) -> None:
         with thp.FakeTime() as t:
             async with thp.MockedCallLater(t):
                 called = []
@@ -134,7 +134,7 @@ class TestTick:
         assert called == [(1, 0), (2, 3), (3, 6), (4, 11), (5, 13), (6, 22), (7, 24)]
         assert m.called_times == [3, 6, 9, 12, 15, 24]
 
-    async def test_stops_if_final_future_stops(self):
+    async def test_stops_if_final_future_stops(self) -> None:
         called = []
 
         final_future = hp.create_future()
@@ -152,7 +152,7 @@ class TestTick:
 
 
 class TestATicker:
-    async def test_can_change_the_after_permanently(self):
+    async def test_can_change_the_after_permanently(self) -> None:
         called = []
 
         with thp.FakeTime() as t:
@@ -187,7 +187,7 @@ class TestATicker:
         ]
         assert m.called_times == [3, 6, 11, 16, 21, 26, 31, 36, 41]
 
-    async def test_can_change_the_after_once(self):
+    async def test_can_change_the_after_once(self) -> None:
         called = []
 
         with thp.FakeTime() as t:
@@ -205,7 +205,7 @@ class TestATicker:
         assert called == [(1, 3, 0), (2, 3, 3), (3, 3, 6), (4, 1, 11), (5, 3, 12), (6, 3, 15)]
         assert m.called_times == [3, 6, 11, 12, 15]
 
-    async def test_can_have_a_minimum_wait(self):
+    async def test_can_have_a_minimum_wait(self) -> None:
         called = []
 
         with thp.FakeTime() as t:
@@ -223,7 +223,7 @@ class TestATicker:
         assert called == [(1, 5, 0), (2, 5, 5), (3, 6, 14), (4, 5, 20)]
         assert m.called_times == [5, 10, 20]
 
-    async def test_can_be_told_to_follow_the_schedule(self):
+    async def test_can_be_told_to_follow_the_schedule(self) -> None:
         called = []
 
         with thp.FakeTime() as t:
@@ -252,7 +252,7 @@ class TestATicker:
         assert m.called_times == [5, 10, 14, 15, 20, 27, 30]
 
     class TestWithAPauser:
-        async def test_can_be_paused(self):
+        async def test_can_be_paused(self) -> None:
             called = []
 
             pauser = asyncio.Semaphore()
@@ -280,7 +280,7 @@ class TestATicker:
             ]
             assert m.called_times == [5.0, 10.0, 33.0, 33.0, 35.0, 40.0, 45.0]
 
-        async def test_cancelled_final_future_not_stopped_by_pauser(self):
+        async def test_cancelled_final_future_not_stopped_by_pauser(self) -> None:
             called = []
 
             pauser = asyncio.Semaphore()
