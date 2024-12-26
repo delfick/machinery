@@ -12,6 +12,7 @@ Changelog
     * Removed ``hp.ExceptionGroup`` in favour of python built in ExceptionGroup
     * Removed ``hp.AsyncCMMixin`` in favour of being explicit about what it does
       on classes that use it.
+    * Removed ``hp.Nope``
 
 .. _release-0.1.1:
 
