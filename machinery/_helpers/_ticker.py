@@ -140,7 +140,7 @@ class ATicker:
         self.gen = self.tick()
         return self
 
-    def __aiter__(self) -> AsyncGenerator[tuple[int, float], None]:
+    def __aiter__(self) -> AsyncGenerator[tuple[int, float]]:
         if not hasattr(self, "gen"):
             raise Exception(
                 "The ticker must be used as a context manager before being used as an async iterator"
@@ -163,7 +163,7 @@ class ATicker:
 
         self.final_future.cancel()
 
-    async def tick(self) -> AsyncGenerator[tuple[int, float], None]:
+    async def tick(self) -> AsyncGenerator[tuple[int, float]]:
         final_handle = None
         if self.max_time:
             final_handle = _futures.get_event_loop().call_later(
@@ -233,7 +233,7 @@ class ATicker:
             ts.add(pause())
             ts.add_task(self.waiter)
 
-    async def _tick(self) -> AsyncGenerator[tuple[int, float], None]:
+    async def _tick(self) -> AsyncGenerator[tuple[int, float]]:
         start = time.time()
         iteration = 0
         self.expected = start
