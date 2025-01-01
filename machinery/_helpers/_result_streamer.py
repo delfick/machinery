@@ -4,7 +4,15 @@ import traceback
 import types
 from typing import Self
 
-from . import _async_mixin, _futures, _other, _queue, _task_holder
+from . import (
+    _async_mixin,
+    _future_waiters,
+    _future_wrappers,
+    _futures,
+    _other,
+    _queue,
+    _task_holder,
+)
 
 
 class ResultStreamer:
@@ -155,13 +163,13 @@ class ResultStreamer:
         name=None,
     ):
         self.name = name
-        self.final_future = _futures.ChildOfFuture(
+        self.final_future = _future_wrappers.ChildOfFuture(
             final_future, name=f"ResultStreamer({self.name})::__init__[final_future]"
         )
         self.error_catcher = error_catcher
         self.exceptions_only_to_error_catcher = exceptions_only_to_error_catcher
 
-        self.queue_future = _futures.ChildOfFuture(
+        self.queue_future = _future_wrappers.ChildOfFuture(
             final_future, name=f"ResultStreamer({self.name})::__init__[queue_future]"
         )
         self.queue = _queue.Queue(
@@ -211,7 +219,7 @@ class ResultStreamer:
             await _futures.cancel_futures_and_wait(
                 task, name=f"ResultStreamer({self.name})::add_generator[already_stopped_task]"
             )
-            await _futures.wait_for_first_future(
+            await _future_waiters.wait_for_first_future(
                 _futures.async_as_background(gen.aclose()),
                 name=f"ResultStreamer({self.name})::add_generator[already_stopped_gen]",
             )
@@ -236,7 +244,7 @@ class ResultStreamer:
     async def add_task(self, task, *, context=None, on_done=None, force=False):
         if self.final_future.done():
             if force:
-                await _futures.wait_for_all_futures(
+                await _future_waiters.wait_for_all_futures(
                     task, name=f"ResultStreamer({self.name})::add_task[force_already_stopped]"
                 )
             else:

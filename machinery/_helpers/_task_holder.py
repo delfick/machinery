@@ -1,7 +1,7 @@
 import types
 from typing import Self
 
-from . import _async_mixin, _futures
+from . import _async_mixin, _future_waiters, _future_wrappers, _futures
 
 
 class TaskHolder:
@@ -83,12 +83,12 @@ class TaskHolder:
         self.name = name
 
         self.ts = []
-        self.final_future = _futures.ChildOfFuture(
+        self.final_future = _future_wrappers.ChildOfFuture(
             final_future, name=f"TaskHolder({self.name})::__init__[final_future]"
         )
 
         self._cleaner = None
-        self._cleaner_waiter = _futures.ResettableFuture(
+        self._cleaner_waiter = _future_wrappers.ResettableFuture(
             name=f"TaskHolder({self.name})::__init__[cleaner_waiter]"
         )
 
@@ -135,13 +135,13 @@ class TaskHolder:
 
                 if self.ts:
                     if self.final_future.done():
-                        await _futures.wait_for_all_futures(
+                        await _future_waiters.wait_for_all_futures(
                             self.final_future,
                             *self.ts,
                             name=f"TaskHolder({self.name})::finish[wait_for_all_tasks]",
                         )
                     else:
-                        await _futures.wait_for_first_future(
+                        await _future_waiters.wait_for_first_future(
                             self.final_future,
                             *self.ts,
                             name=f"TaskHolder({self.name})::finish[wait_for_another_task]",
@@ -157,11 +157,11 @@ class TaskHolder:
     async def _final(self):
         if self._cleaner:
             self._cleaner.cancel()
-            await _futures.wait_for_all_futures(
+            await _future_waiters.wait_for_all_futures(
                 self._cleaner, name=f"TaskHolder({self.name})::finish[finally_wait_for_cleaner]"
             )
 
-        await _futures.wait_for_all_futures(
+        await _future_waiters.wait_for_all_futures(
             _futures.async_as_background(self.clean()),
             name=f"TaskHolder({self.name})::finish[finally_wait_for_clean]",
         )
@@ -191,7 +191,7 @@ class TaskHolder:
             else:
                 remaining.append(t)
 
-        await _futures.wait_for_all_futures(
+        await _future_waiters.wait_for_all_futures(
             *destroyed, name=f"TaskHolder({self.name})::clean[wait_for_destroyed]"
         )
         self.ts = remaining + [t for t in self.ts if t not in destroyed and t not in remaining]

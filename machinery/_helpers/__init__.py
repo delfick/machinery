@@ -1,4 +1,6 @@
 from . import _async_mixin as async_mixin
+from . import _future_waiters as future_waiters
+from . import _future_wrappers as future_wrappers
 from . import _futures as futures
 from . import _memoized_property as memoized_property
 from . import _other as other
@@ -9,6 +11,8 @@ from . import _ticker as ticker
 
 __all__ = [
     "async_mixin",
+    "future_waiters",
+    "future_wrappers",
     "futures",
     "memoized_property",
     "other",

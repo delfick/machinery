@@ -2,7 +2,7 @@ import collections
 import queue as stdqueue
 import types
 
-from . import _futures
+from . import _future_waiters, _future_wrappers
 
 
 class SyncQueue:
@@ -31,7 +31,7 @@ class SyncQueue:
         self.name = name
         self.timeout = timeout
         self.collection = stdqueue.Queue()
-        self.final_future = _futures.ChildOfFuture(
+        self.final_future = _future_wrappers.ChildOfFuture(
             final_future, name=f"SyncQueue({self.name})::__init__[final_future]"
         )
         self.empty_on_finished = empty_on_finished
@@ -109,9 +109,11 @@ class Queue:
 
     def __init__(self, final_future, *, empty_on_finished=False, name=None):
         self.name = name
-        self.waiter = _futures.ResettableFuture(name=f"Queue({self.name})::__init__[waiter]")
+        self.waiter = _future_wrappers.ResettableFuture(
+            name=f"Queue({self.name})::__init__[waiter]"
+        )
         self.collection = collections.deque()
-        self.final_future = _futures.ChildOfFuture(
+        self.final_future = _future_wrappers.ChildOfFuture(
             final_future, name=f"Queue({self.name})::__init__[final_future]"
         )
         self.empty_on_finished = empty_on_finished
@@ -144,7 +146,7 @@ class Queue:
             self.waiter.reset()
 
         while True:
-            await _futures.wait_for_first_future(
+            await _future_waiters.wait_for_first_future(
                 self.final_future,
                 self.waiter,
                 name=f"Queue({self.name})::_get_and_wait[wait_for_next_value]",

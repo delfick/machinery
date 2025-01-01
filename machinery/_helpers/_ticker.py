@@ -4,7 +4,7 @@ import types
 from collections.abc import AsyncGenerator
 from typing import Self
 
-from . import _async_mixin, _futures, _task_holder
+from . import _async_mixin, _future_waiters, _future_wrappers, _futures, _task_holder
 
 
 class ATicker:
@@ -127,8 +127,10 @@ class ATicker:
         self.handle: asyncio.Handle | None = None
         self.expected: float | None = None
 
-        self.waiter = _futures.ResettableFuture(name=f"ATicker({self.name})::__init__[waiter]")
-        self.final_future = _futures.ChildOfFuture(
+        self.waiter = _future_wrappers.ResettableFuture(
+            name=f"ATicker({self.name})::__init__[waiter]"
+        )
+        self.final_future = _future_wrappers.ChildOfFuture(
             final_future
             or _futures.create_future(name=f"ATicker({self.name})::__init__[owned_final_future]"),
             name=f"ATicker({self.name})::__init__[final_future]",
@@ -213,7 +215,7 @@ class ATicker:
         pauser = self.pauser
 
         if pauser is None or not pauser.locked():
-            return await _futures.wait_for_first_future(
+            return await _future_waiters.wait_for_first_future(
                 self.final_future,
                 self.waiter,
                 name=f"ATicker({self.name})::_wait_for_next[without_pause]",
@@ -223,7 +225,7 @@ class ATicker:
             async with pauser:
                 pass
 
-        ts_final_future = _futures.ChildOfFuture(
+        ts_final_future = _future_wrappers.ChildOfFuture(
             self.final_future, name=f"ATicker({self.name})::_wait_for_next[with_pause]"
         )
 
