@@ -1,8 +1,9 @@
 import asyncio
+import dataclasses
 import time
 import types
 import uuid
-from typing import ClassVar
+from collections.abc import Sequence
 from unittest import mock
 
 import pytest
@@ -12,8 +13,8 @@ from machinery import test_helpers as thp
 
 
 @pytest.fixture()
-def loop():
-    return hp.get_event_loop()
+def loop() -> asyncio.AbstractEventLoop:
+    return asyncio.get_event_loop_policy().get_event_loop()
 
 
 class TestCreatingAFuture:
@@ -36,34 +37,36 @@ class TestCreatingAFuture:
 
 
 class TestFutHasCallback:
-    async def test_says_no_if_fut_has_no_callbacks(self):
-        def func():
-            pass
+    async def test_says_no_if_fut_has_no_callbacks(self, loop: asyncio.AbstractEventLoop) -> None:
+        def func(res: hp.protocols.FutureStatus[None]) -> None:
+            return None
 
-        fut = hp.create_future()
+        fut: asyncio.Future[None] = loop.create_future()
         assert not hp.fut_has_callback(fut, func)
 
-    async def test_says_no_if_it_has_other_callbacks(self):
-        def func1():
-            pass
+    async def test_says_no_if_it_has_other_callbacks(
+        self, loop: asyncio.AbstractEventLoop
+    ) -> None:
+        def func1(res: hp.protocols.FutureStatus[None]) -> None:
+            return None
 
-        def func2():
-            pass
+        def func2(res: hp.protocols.FutureStatus[None]) -> None:
+            return None
 
-        fut = hp.create_future()
+        fut: asyncio.Future[None] = loop.create_future()
         fut.add_done_callback(func1)
         assert not hp.fut_has_callback(fut, func2)
 
-    async def test_says_yes_if_we_have_the_callback(self):
-        def func1():
-            pass
+    async def test_says_yes_if_we_have_the_callback(self, loop: asyncio.AbstractEventLoop):
+        def func1(res: hp.protocols.FutureStatus[None]) -> None:
+            return None
 
-        fut = hp.create_future()
+        fut: asyncio.Future[None] = loop.create_future()
         fut.add_done_callback(func1)
         assert hp.fut_has_callback(fut, func1)
 
-        def func2():
-            pass
+        def func2(res: hp.protocols.FutureStatus[None]) -> None:
+            return None
 
         assert not hp.fut_has_callback(fut, func2)
         fut.add_done_callback(func2)
@@ -159,10 +162,10 @@ class TestReporter:
 
 
 class TestTransferResult:
-    async def test_works_as_a_done_callback(self, loop):
-        fut = hp.create_future()
+    async def test_works_as_a_done_callback(self, loop: asyncio.AbstractEventLoop) -> None:
+        fut: asyncio.Future[list[int]] = loop.create_future()
 
-        async def doit():
+        async def doit() -> list[int]:
             return [1, 2]
 
         t = loop.create_task(doit())
@@ -171,14 +174,18 @@ class TestTransferResult:
 
         assert fut.result() == [1, 2]
 
-    async def test_can_run_a_process_function(self, loop):
-        fut = hp.create_future()
-        res = mock.Mock(name="res")
+    async def test_can_run_a_process_function(self, loop: asyncio.AbstractEventLoop) -> None:
+        class Res:
+            pass
 
-        async def doit():
+        fut: asyncio.Future[Res] = loop.create_future()
+
+        res = Res()
+
+        async def doit() -> Res:
             return res
 
-        def process(r, f):
+        def process(r: hp.protocols.FutureStatus[Res], f: asyncio.Future[Res]) -> None:
             assert r.result() is res
             assert f is fut
             assert f.result() is res
@@ -190,7 +197,9 @@ class TestTransferResult:
         assert fut.result() is res
 
     class TestErrorsOnly:
-        async def test_cancels_fut_if_res_is_cancelled(self):
+        async def test_cancels_fut_if_res_is_cancelled(
+            self, loop: asyncio.AbstractEventLoop
+        ) -> None:
             fut = hp.create_future()
             res = hp.create_future()
             res.cancel()
@@ -198,9 +207,11 @@ class TestTransferResult:
             hp.transfer_result(fut, errors_only=True)(res)
             assert res.cancelled()
 
-        async def test_sets_exception_on_fut_if_res_has_an_exception(self):
-            fut = hp.create_future()
-            res = hp.create_future()
+        async def test_sets_exception_on_fut_if_res_has_an_exception(
+            self, loop: asyncio.AbstractEventLoop
+        ) -> None:
+            fut: asyncio.Future[None] = loop.create_future()
+            res: asyncio.Future[None] = loop.create_future()
 
             error = ValueError("NOPE")
             res.set_exception(error)
@@ -208,16 +219,18 @@ class TestTransferResult:
             hp.transfer_result(fut, errors_only=True)(res)
             assert fut.exception() == error
 
-        async def test_does_not_transfer_result(self):
-            fut = hp.create_future()
-            res = hp.create_future()
+        async def test_does_not_transfer_result(self, loop: asyncio.AbstractEventLoop) -> None:
+            fut: asyncio.Future[list[int]] = loop.create_future()
+            res: asyncio.Future[list[int]] = loop.create_future()
             res.set_result([1, 2])
 
             hp.transfer_result(fut, errors_only=True)(res)
             assert not fut.done()
 
     class TestNotErrorsOnly:
-        async def test_cancels_fut_if_res_is_cancelled(self):
+        async def test_cancels_fut_if_res_is_cancelled(
+            self, loop: asyncio.AbstractEventLoop
+        ) -> None:
             fut = hp.create_future()
             res = hp.create_future()
             res.cancel()
@@ -225,9 +238,11 @@ class TestTransferResult:
             hp.transfer_result(fut, errors_only=False)(res)
             assert res.cancelled()
 
-        async def test_sets_exception_on_fut_if_res_has_an_exception(self):
-            fut = hp.create_future()
-            res = hp.create_future()
+        async def test_sets_exception_on_fut_if_res_has_an_exception(
+            self, loop: asyncio.AbstractEventLoop
+        ) -> None:
+            fut: asyncio.Future[None] = loop.create_future()
+            res: asyncio.Future[None] = loop.create_future()
 
             error = ValueError("NOPE")
             res.set_exception(error)
@@ -235,9 +250,9 @@ class TestTransferResult:
             hp.transfer_result(fut, errors_only=False)(res)
             assert fut.exception() == error
 
-        async def test_transfers_result(self):
-            fut = hp.create_future()
-            res = hp.create_future()
+        async def test_transfers_result(self, loop: asyncio.AbstractEventLoop) -> None:
+            fut: asyncio.Future[list[int]] = loop.create_future()
+            res: asyncio.Future[list[int]] = loop.create_future()
             res.set_result([1, 2])
 
             hp.transfer_result(fut, errors_only=False)(res)
@@ -245,14 +260,20 @@ class TestTransferResult:
 
 
 class TestNoncancelledResultsFromFuts:
-    async def test_returns_results_from_done_futures_that_arent_cancelled(self):
-        fut1 = hp.create_future()
-        fut2 = hp.create_future()
-        fut3 = hp.create_future()
-        fut4 = hp.create_future()
+    async def test_returns_results_from_done_futures_that_arent_cancelled(
+        self, loop: asyncio.AbstractEventLoop
+    ) -> None:
+        @dataclasses.dataclass(frozen=True, kw_only=True)
+        class Res:
+            name: str
 
-        result1 = mock.Mock(name="result1")
-        result2 = mock.Mock(name="result2")
+        fut1: asyncio.Future[Res] = loop.create_future()
+        fut2: asyncio.Future[Res] = loop.create_future()
+        fut3: asyncio.Future[Res] = loop.create_future()
+        fut4: asyncio.Future[Res] = loop.create_future()
+
+        result1 = Res(name="result1")
+        result2 = Res(name="result2")
 
         fut2.set_result(result1)
         fut3.cancel()
@@ -263,14 +284,18 @@ class TestNoncancelledResultsFromFuts:
             [result1, result2],
         )
 
-    async def test_returns_found_errors_as_well(self):
-        fut1 = hp.create_future()
-        fut2 = hp.create_future()
-        fut3 = hp.create_future()
-        fut4 = hp.create_future()
+    async def test_returns_found_errors_as_well(self, loop: asyncio.AbstractEventLoop) -> None:
+        @dataclasses.dataclass(frozen=True, kw_only=True)
+        class Res:
+            name: str
+
+        fut1: asyncio.Future[Res] = loop.create_future()
+        fut2: asyncio.Future[Res] = loop.create_future()
+        fut3: asyncio.Future[Res] = loop.create_future()
+        fut4: asyncio.Future[Res] = loop.create_future()
 
         error1 = Exception("wat")
-        result2 = mock.Mock(name="result2")
+        result2 = Res(name="result2")
 
         fut2.set_exception(error1)
         fut3.cancel()
@@ -278,16 +303,18 @@ class TestNoncancelledResultsFromFuts:
 
         assert hp.noncancelled_results_from_futs([fut1, fut2, fut3, fut4]) == (error1, [result2])
 
-    async def test_squashes_the_same_error_into_one_error(self):
-        fut1 = hp.create_future()
-        fut2 = hp.create_future()
-        fut3 = hp.create_future()
-        fut4 = hp.create_future()
+    async def test_squashes_the_same_error_into_one_error(
+        self, loop: asyncio.AbstractEventLoop
+    ) -> None:
+        fut1: asyncio.Future[None] = loop.create_future()
+        fut2: asyncio.Future[None] = loop.create_future()
+        fut3: asyncio.Future[None] = loop.create_future()
+        fut4: asyncio.Future[None] = loop.create_future()
 
         error1 = ValueError("wat one=1")
 
         class OtherError(Exception):
-            def __eq__(self, o: object) -> True:
+            def __eq__(self, o: object) -> bool:
                 return o is error1
 
         error2 = OtherError()
@@ -298,16 +325,22 @@ class TestNoncancelledResultsFromFuts:
 
         assert hp.noncancelled_results_from_futs([fut1, fut2, fut3, fut4]) == (error1, [])
 
-    async def test_can_return_error_with_multiple_errors(self):
-        fut1 = hp.create_future()
-        fut2 = hp.create_future()
-        fut3 = hp.create_future()
-        fut4 = hp.create_future()
-        fut5 = hp.create_future()
+    async def test_can_return_error_with_multiple_errors(
+        self, loop: asyncio.AbstractEventLoop
+    ) -> None:
+        @dataclasses.dataclass(frozen=True, kw_only=True)
+        class Res:
+            name: str
+
+        fut1: asyncio.Future[Res] = loop.create_future()
+        fut2: asyncio.Future[Res] = loop.create_future()
+        fut3: asyncio.Future[Res] = loop.create_future()
+        fut4: asyncio.Future[Res] = loop.create_future()
+        fut5: asyncio.Future[Res] = loop.create_future()
 
         error1 = ValueError("wat")
         error2 = ValueError("wat2")
-        result2 = mock.Mock(name="result2")
+        result2 = Res(name="result2")
 
         fut2.set_exception(error1)
         fut3.cancel()
@@ -315,145 +348,181 @@ class TestNoncancelledResultsFromFuts:
         fut5.set_exception(error2)
 
         result = hp.noncancelled_results_from_futs([fut1, fut2, fut3, fut4, fut5])
-        assert isinstance(result[0], ExceptionGroup)
+        assert isinstance(result[0], BaseExceptionGroup)
         assert result[0].exceptions == (error1, error2)
         assert result[1] == [result2]
 
 
 class TestFindAndApplyResult:
-    @pytest.fixture()
-    def V(self) -> object:
-        class V:
-            fut1 = hp.create_future()
-            fut2 = hp.create_future()
-            fut3 = hp.create_future()
-            fut4 = hp.create_future()
-            final_fut = hp.create_future()
+    @dataclasses.dataclass(frozen=True, kw_only=True)
+    class Res:
+        name: str
 
-            _memoized_cache: ClassVar[dict[str, object]] = {}
+    class PerTestLogic[T_Res = Res]:
+        def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
+            self.fut1: asyncio.Future[T_Res] = loop.create_future()
+            self.fut2: asyncio.Future[T_Res] = loop.create_future()
+            self.fut3: asyncio.Future[T_Res] = loop.create_future()
+            self.fut4: asyncio.Future[T_Res] = loop.create_future()
+            self.final_fut: asyncio.Future[T_Res] = loop.create_future()
+            self.Res = TestFindAndApplyResult.Res
 
-            @hp.memoized_property
-            def available_futs(s):
-                return [s.fut1, s.fut2, s.fut3, s.fut4]
+        @property
+        def available_futs(self) -> Sequence[asyncio.Future[T_Res]]:
+            return [self.fut1, self.fut2, self.fut3, self.fut4]
 
-        return V()
+    async def test_cancels_futures_if_final_future_is_cancelled(
+        self, loop: asyncio.AbstractEventLoop
+    ) -> None:
+        test_logic = self.PerTestLogic(loop)
 
-    async def test_cancels_futures_if_final_future_is_cancelled(self, V):
-        V.final_fut.cancel()
-        assert hp.find_and_apply_result(V.final_fut, V.available_futs) is False
+        test_logic.final_fut.cancel()
+        assert hp.find_and_apply_result(test_logic.final_fut, test_logic.available_futs) is False
 
-        assert V.fut1.cancelled()
-        assert V.fut2.cancelled()
-        assert V.fut3.cancelled()
-        assert V.fut4.cancelled()
+        assert test_logic.fut1.cancelled()
+        assert test_logic.fut2.cancelled()
+        assert test_logic.fut3.cancelled()
+        assert test_logic.fut4.cancelled()
 
-        assert V.final_fut.cancelled()
+        assert test_logic.final_fut.cancelled()
 
-    async def test_sets_exceptions_on_futures_if_final_future_has_an_exception(self, V):
+    async def test_sets_exceptions_on_futures_if_final_future_has_an_exception(
+        self, loop: asyncio.AbstractEventLoop
+    ) -> None:
+        test_logic = self.PerTestLogic(loop)
+
         error = ValueError("NOPE")
-        V.final_fut.set_exception(error)
-        assert hp.find_and_apply_result(V.final_fut, V.available_futs) is False
+        test_logic.final_fut.set_exception(error)
+        assert hp.find_and_apply_result(test_logic.final_fut, test_logic.available_futs) is False
 
-        for f in V.available_futs:
+        for f in test_logic.available_futs:
             assert f.exception() is error
 
-    async def test_ignores_futures_already_done_when_final_future_has_an_exception(self, V):
+    async def test_ignores_futures_already_done_when_final_future_has_an_exception(
+        self, loop: asyncio.AbstractEventLoop
+    ) -> None:
+        test_logic = self.PerTestLogic[list[int]](loop)
+
         err1 = Exception("LOLZ")
-        V.available_futs[0].set_exception(err1)
-        V.available_futs[1].cancel()
-        V.available_futs[2].set_result([1, 2])
+        test_logic.available_futs[0].set_exception(err1)
+        test_logic.available_futs[1].cancel()
+        test_logic.available_futs[2].set_result([1, 2])
 
         err2 = ValueError("NOPE")
-        V.final_fut.set_exception(err2)
-        assert hp.find_and_apply_result(V.final_fut, V.available_futs) is False
+        test_logic.final_fut.set_exception(err2)
+        assert hp.find_and_apply_result(test_logic.final_fut, test_logic.available_futs) is False
 
-        assert V.available_futs[0].exception() is err1
-        assert V.available_futs[1].cancelled()
-        assert V.available_futs[2].result() == [1, 2]
-        assert V.available_futs[3].exception() is err2
+        assert test_logic.available_futs[0].exception() is err1
+        assert test_logic.available_futs[1].cancelled()
+        assert test_logic.available_futs[2].result() == [1, 2]
+        assert test_logic.available_futs[3].exception() is err2
 
-    async def test_spreads_error_if_any_is_found(self, V):
+    async def test_spreads_error_if_any_is_found(self, loop: asyncio.AbstractEventLoop) -> None:
+        test_logic = self.PerTestLogic(loop)
+
         error1 = Exception("wat")
-        V.fut2.set_exception(error1)
+        test_logic.fut2.set_exception(error1)
 
-        assert hp.find_and_apply_result(V.final_fut, V.available_futs) is True
+        assert hp.find_and_apply_result(test_logic.final_fut, test_logic.available_futs) is True
 
-        assert V.fut1.exception() is error1
-        assert V.fut2.exception() is error1
-        assert V.fut3.exception() is error1
-        assert V.fut4.exception() is error1
+        assert test_logic.fut1.exception() is error1
+        assert test_logic.fut2.exception() is error1
+        assert test_logic.fut3.exception() is error1
+        assert test_logic.fut4.exception() is error1
 
-        assert V.final_fut.exception() is error1
+        assert test_logic.final_fut.exception() is error1
 
-    async def test_doesnt_spread_error_to_those_already_cancelled_or_with_error(self, V):
+    async def test_doesnt_spread_error_to_those_already_cancelled_or_with_error(
+        self, loop: asyncio.AbstractEventLoop
+    ) -> None:
+        test_logic = self.PerTestLogic(loop)
+
         error1 = ValueError("wat")
-        V.fut2.set_exception(error1)
+        test_logic.fut2.set_exception(error1)
 
         error2 = ValueError("wat2")
-        V.fut1.set_exception(error2)
+        test_logic.fut1.set_exception(error2)
 
-        V.fut4.cancel()
+        test_logic.fut4.cancel()
 
-        assert hp.find_and_apply_result(V.final_fut, V.available_futs) is True
+        assert hp.find_and_apply_result(test_logic.final_fut, test_logic.available_futs) is True
 
-        assert V.fut1.exception() is error2
-        assert V.fut2.exception() is error1
+        assert test_logic.fut1.exception() is error2
+        assert test_logic.fut2.exception() is error1
 
-        exception_3 = V.fut3.exception()
+        exception_3 = test_logic.fut3.exception()
         assert isinstance(exception_3, ExceptionGroup)
         assert exception_3.exceptions == (error2, error1)
 
-        assert V.fut4.cancelled()
+        assert test_logic.fut4.cancelled()
 
-        exception_final = V.final_fut.exception()
+        exception_final = test_logic.final_fut.exception()
         assert isinstance(exception_final, ExceptionGroup)
         assert exception_final.exceptions == (error2, error1)
 
-    async def test_sets_results_if_one_has_a_result(self, V):
-        result = mock.Mock(name="result")
-        V.fut1.set_result(result)
+    async def test_sets_results_if_one_has_a_result(self, loop: asyncio.AbstractEventLoop) -> None:
+        test_logic = self.PerTestLogic(loop)
 
-        assert hp.find_and_apply_result(V.final_fut, V.available_futs) is True
+        result = test_logic.Res(name="result")
+        test_logic.fut1.set_result(result)
 
-        assert V.fut1.result() is result
-        assert V.fut2.result() is result
-        assert V.fut3.result() is result
-        assert V.fut4.result() is result
+        assert hp.find_and_apply_result(test_logic.final_fut, test_logic.available_futs) is True
 
-        assert V.final_fut.result() is result
+        assert test_logic.fut1.result() is result
+        assert test_logic.fut2.result() is result
+        assert test_logic.fut3.result() is result
+        assert test_logic.fut4.result() is result
 
-    async def test_sets_results_if_one_has_a_result_except_for_cancelled_ones(self, V):
-        result = mock.Mock(name="result")
-        V.fut1.set_result(result)
-        V.fut2.cancel()
+        assert test_logic.final_fut.result() is result
 
-        assert hp.find_and_apply_result(V.final_fut, V.available_futs) is True
+    async def test_sets_results_if_one_has_a_result_except_for_cancelled_ones(
+        self, loop: asyncio.AbstractEventLoop
+    ) -> None:
+        test_logic = self.PerTestLogic(loop)
 
-        assert V.fut1.result() is result
-        assert V.fut2.cancelled()
-        assert V.fut3.result() is result
-        assert V.fut4.result() is result
+        result = test_logic.Res(name="result")
+        test_logic.fut1.set_result(result)
+        test_logic.fut2.cancel()
 
-        assert V.final_fut.result() is result
+        assert hp.find_and_apply_result(test_logic.final_fut, test_logic.available_futs) is True
 
-    async def test_sets_result_on_final_fut_unless_its_already_cancelled(self, V):
-        result = mock.Mock(name="result")
-        V.fut1.set_result(result)
-        V.final_fut.cancel()
+        assert test_logic.fut1.result() is result
+        assert test_logic.fut2.cancelled()
+        assert test_logic.fut3.result() is result
+        assert test_logic.fut4.result() is result
 
-        assert hp.find_and_apply_result(V.final_fut, V.available_futs) is False
-        assert V.final_fut.cancelled()
+        assert test_logic.final_fut.result() is result
 
-    async def test_cancels_final_fut_if_any_of_our_futs_are_cancelled(self, V):
-        V.fut1.cancel()
-        assert hp.find_and_apply_result(V.final_fut, V.available_futs) is True
-        assert V.final_fut.cancelled()
+    async def test_sets_result_on_final_fut_unless_its_already_cancelled(
+        self, loop: asyncio.AbstractEventLoop
+    ) -> None:
+        test_logic = self.PerTestLogic(loop)
 
-    async def test_does_nothing_if_none_of_the_futures_are_done(self, V):
-        assert hp.find_and_apply_result(V.final_fut, V.available_futs) is False
-        for f in V.available_futs:
+        result = test_logic.Res(name="result")
+        test_logic.fut1.set_result(result)
+        test_logic.final_fut.cancel()
+
+        assert hp.find_and_apply_result(test_logic.final_fut, test_logic.available_futs) is False
+        assert test_logic.final_fut.cancelled()
+
+    async def test_cancels_final_fut_if_any_of_our_futs_are_cancelled(
+        self, loop: asyncio.AbstractEventLoop
+    ) -> None:
+        test_logic = self.PerTestLogic(loop)
+
+        test_logic.fut1.cancel()
+        assert hp.find_and_apply_result(test_logic.final_fut, test_logic.available_futs) is True
+        assert test_logic.final_fut.cancelled()
+
+    async def test_does_nothing_if_none_of_the_futures_are_done(
+        self, loop: asyncio.AbstractEventLoop
+    ) -> None:
+        test_logic = self.PerTestLogic(loop)
+
+        assert hp.find_and_apply_result(test_logic.final_fut, test_logic.available_futs) is False
+        for f in test_logic.available_futs:
             assert not f.done()
-        assert not V.final_fut.done()
+        assert not test_logic.final_fut.done()
 
 
 class TestWaitingForAllFutures:

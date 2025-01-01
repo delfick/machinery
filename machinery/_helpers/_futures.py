@@ -1,7 +1,9 @@
 import asyncio
 import logging
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable, Sequence
 from typing import Protocol, TypeVar
+
+from . import _protocols
 
 T_Send = TypeVar("T_Send")
 
@@ -122,22 +124,16 @@ def create_future(*, name=None, loop=None):
     return future
 
 
-def fut_has_callback(fut, callback):
+def fut_has_callback[T_Ret](
+    fut: asyncio.Future[T_Ret], callback: _protocols.FutureCallback[T_Ret]
+) -> bool:
     """
     Look at the callbacks on the future and return ``True`` if any of them
     are the provided ``callback``.
     """
     if not fut._callbacks:
         return False
-
-    for cb in fut._callbacks:
-        if type(cb) is tuple and cb:
-            cb = cb[0]
-
-        if cb == callback:
-            return True
-
-    return False
+    return any(cb == callback for cb, _ in fut._callbacks)
 
 
 def async_as_background(coroutine, silent=False):
@@ -223,7 +219,11 @@ async def async_with_timeout(
         handle.cancel()
 
 
-def transfer_result(fut, errors_only=False, process=None):
+def transfer_result[T_Res](
+    fut: asyncio.Future[T_Res],
+    errors_only: bool = False,
+    process: Callable[[_protocols.FutureStatus[T_Res], asyncio.Future[T_Res]], None] | None = None,
+) -> _protocols.FutureCallback[T_Res]:
     """
     Return a ``done_callback`` that transfers the result, errors or cancellation
     to the provided future.
@@ -231,28 +231,12 @@ def transfer_result(fut, errors_only=False, process=None):
     If errors_only is ``True`` then it will not transfer a successful result
     to the provided future.
 
-    .. code-block:: python
-
-        from machinery import helpers as hp
-
-        import asyncio
-
-
-        async def my_coroutine():
-            return 2
-
-        fut = hp.create_future()
-        task = hp.async_as_background(my_coroutine())
-        task.add_done_callback(hp.transfer_result(fut))
-
-        assert (await fut) == 2
-
     If process is provided, then when the coroutine is done, process will be
     called with the result of the coroutine and the future that result is being
     transferred to.
     """
 
-    def transfer(res):
+    def transfer(res: _protocols.FutureStatus[T_Res]) -> None:
         if res.cancelled():
             fut.cancel()
             return
@@ -275,7 +259,9 @@ def transfer_result(fut, errors_only=False, process=None):
     return transfer
 
 
-def noncancelled_results_from_futs(futs):
+def noncancelled_results_from_futs[T_Ret](
+    futs: Sequence[_protocols.FutureStatus[T_Ret]],
+) -> tuple[BaseException | BaseExceptionGroup | None, Sequence[T_Ret]]:
     """
     Get back (exception, results) from a list of futures
 
@@ -288,8 +274,9 @@ def noncancelled_results_from_futs(futs):
     results
         A list of the results that exist
     """
-    errors = []
-    results = []
+    errors: list[BaseException] = []
+    results: list[T_Ret] = []
+
     for f in futs:
         if f.done() and not f.cancelled():
             exc = f.exception()
@@ -299,67 +286,67 @@ def noncancelled_results_from_futs(futs):
             else:
                 results.append(f.result())
 
+    final_error: BaseException | BaseExceptionGroup | None = None
     if errors:
-        errors = list(errors)
         if len(errors) == 1:
-            errors = errors[0]
+            final_error = errors[0]
         else:
-            errors = ExceptionGroup("Futures failed", errors)
-    else:
-        errors = None
+            final_error = BaseExceptionGroup("Futures failed", errors)
 
-    return (errors, results)
+    return (final_error, results)
 
 
-def find_and_apply_result(final_fut, available_futs):
+def find_and_apply_result[T_Ret](
+    final: asyncio.Future[T_Ret], futs: Sequence[asyncio.Future[T_Ret]]
+) -> bool:
     """
-    Find a result in available_futs with a result or exception and set that
-    result/exception on both final_fut, and all the settable futs
-    in available_futs.
+    Find a result in ``futs`` with a result or exception and set that
+    result/exception on both ``final``, and all the settable futures
+    in ``futs``.
 
-    As a bonus, if final_fut is set, then we set that result/exception on
-    available_futs.
+    As a bonus, if ``final`` is set, then we set that result/exception on
+    all futures in ``futs``.
 
-    and if final_fut is cancelled, we cancel all the available futs
+    and if ``final`` is cancelled, we cancel all the futures in ``futs``
 
-    Return True if we've changed final_fut
+    Return True if we've changed ``final``
     """
-    if final_fut.cancelled():
-        for f in available_futs:
+    if final.cancelled():
+        for f in futs:
             f.cancel()
         return False
 
-    if final_fut.done():
-        current_exc = final_fut.exception()
+    if final.done():
+        current_exc = final.exception()
         if current_exc:
-            for f in available_futs:
+            for f in futs:
                 if not f.done():
                     f.set_exception(current_exc)
             return False
 
-    errors, results = noncancelled_results_from_futs(available_futs)
+    errors, results = noncancelled_results_from_futs(futs)
     if errors:
-        for f in available_futs:
+        for f in futs:
             if not f.done() and not f.cancelled():
                 f.set_exception(errors)
-        if not final_fut.done():
-            final_fut.set_exception(errors)
+        if not final.done():
+            final.set_exception(errors)
             return True
         return False
 
     if results:
         res = results[0]
-        for f in available_futs:
+        for f in futs:
             if not f.done() and not f.cancelled():
                 f.set_result(res)
-        if not final_fut.done():
-            final_fut.set_result(res)
+        if not final.done():
+            final.set_result(res)
             return True
         return False
 
-    for f in available_futs:
+    for f in futs:
         if f.cancelled():
-            final_fut.cancel()
+            final.cancel()
             return True
 
     return False

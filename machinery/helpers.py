@@ -1,5 +1,7 @@
 from . import _helpers
 
+protocols = _helpers.protocols
+
 memoized_property = _helpers.memoized_property.memoized_property
 ensure_aexit = _helpers.async_mixin.ensure_aexit
 
