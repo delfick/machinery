@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Protocol, cast
+import types
+from collections.abc import Callable, Coroutine
+from typing import TYPE_CHECKING, Any, Literal, Protocol, Self, cast
 
 
 class FutureStatus[T_Ret](Protocol):
@@ -12,9 +14,100 @@ class FutureStatus[T_Ret](Protocol):
 
 
 class FutureCallback[T_Ret](Protocol):
-    def __call__(self, res: FutureStatus[T_Ret], /) -> object: ...
+    def __hash__(self) -> int: ...
+    def __call__(self, res: FutureStatus[T_Ret], /) -> None: ...
+
+
+class FutureCTXCallback[T_Ret, T_Tramp: Tramp = Tramp](Protocol):
+    def __hash__(self) -> int: ...
+    def __call__(self, ctx: CTX[T_Tramp], res: FutureStatus[T_Ret], /) -> None: ...
+
+
+class Reporter[T_Ret](Protocol):
+    def __call__(self, res: FutureStatus[T_Ret]) -> Literal[True] | None: ...
+
+
+class WaitByCallback[T_Ret](Protocol):
+    def done(self) -> bool: ...
+    def cancel(self) -> bool: ...
+    def add_done_callback(
+        self, cb: Callable[[FutureStatus[T_Ret]], None]
+    ) -> None | FutureCallback[T_Ret]: ...
+    def remove_done_callback(self, cb: Callable[[FutureStatus[T_Ret]], None]) -> int: ...
+
+
+class WithRepr(Protocol):
+    def __repr__(self) -> str: ...
+
+
+class Tramp(Protocol):
+    def set_future_name(self, fut: asyncio.Future[Any], *, name: str) -> None: ...
+    def get_future_name(self, fut: asyncio.Future[Any]) -> str | None: ...
+    def log_exception(
+        self,
+        msg: object,
+        *,
+        exc_info: tuple[type[BaseException], BaseException, types.TracebackType] | None = None,
+    ) -> None: ...
+
+    def fut_to_string(self, f: asyncio.Future[Any] | WithRepr, with_name: bool = True) -> str: ...
+
+    @property
+    def reporter(self) -> Reporter[Any]: ...
+
+    @property
+    def silent_reporter(self) -> Reporter[Any]: ...
+
+
+class CTX[T_Tramp: Tramp](Protocol):
+    @property
+    def loop(self) -> asyncio.AbstractEventLoop: ...
+
+    @property
+    def tramp(self) -> T_Tramp: ...
+
+    def set_exception(self, exc: BaseException) -> None: ...
+
+    def add_on_done(
+        self,
+        cb: FutureCTXCallback[None, T_Tramp],
+        index: FutureCallback[None] | None = None,
+    ) -> FutureCallback[None]: ...
+
+    def done(self) -> bool: ...
+    def cancel(self) -> bool: ...
+    def exception(self) -> BaseException | None: ...
+    def cancelled(self) -> bool: ...
+
+    def add_done_callback(
+        self, cb: Callable[[FutureStatus[None]], None]
+    ) -> FutureCallback[None]: ...
+    def remove_done_callback(self, cb: Callable[[FutureStatus[None]], None]) -> int: ...
+
+    async def wait_for_first_future(self, *futs: WaitByCallback[Any]) -> None: ...
+
+    async def wait_for_all_futures(self, *futs: WaitByCallback[Any]) -> None: ...
+
+    async def cancel_futures_and_wait(self, *futs: WaitByCallback[Any]) -> None: ...
+
+    async def async_with_timeout[T_Ret](
+        self,
+        coro: Coroutine[object, object, T_Ret],
+        silent: bool = True,
+        *,
+        name: str,
+        timeout: int = 10,
+        timeout_error: BaseException | None = None,
+    ) -> T_Ret: ...
+
+    def async_as_background[T_Ret](
+        self, coro: Coroutine[object, object, T_Ret], *, silent: bool = True
+    ) -> asyncio.Task[T_Ret]: ...
+
+    def child(self, *, name: str) -> Self: ...
 
 
 if TYPE_CHECKING:
     _FS: FutureStatus[None] = cast(asyncio.Future[None], None)
+    _WBC: WaitByCallback[None] = cast(asyncio.Future[None], None)
     cast(asyncio.Future[None], None).add_done_callback(cast(FutureCallback[None], None))

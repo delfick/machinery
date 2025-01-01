@@ -12,11 +12,6 @@ from machinery import helpers as hp
 from machinery import test_helpers as thp
 
 
-@pytest.fixture()
-def loop() -> asyncio.AbstractEventLoop:
-    return asyncio.get_event_loop_policy().get_event_loop()
-
-
 class TestCreatingAFuture:
     def test_can_create_a_future_from_a_provided_loop(self):
         fut = mock.Mock(name="future")
