@@ -398,9 +398,9 @@ def assertFutCallbacks(fut, *cbs, exhaustive=False):
     if not cbs:
         if callbacks:
             assert len(callbacks) == 1, f"Expect only one context callback: got {callbacks}"
-            assert isinstance(
-                callbacks[0], Context
-            ), f"Expected just a context callback: got {callbacks}"
+            assert isinstance(callbacks[0], Context), (
+                f"Expected just a context callback: got {callbacks}"
+            )
 
         return
 
