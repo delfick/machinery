@@ -627,46 +627,6 @@ class TestWaitingForFirstFuture:
         assert all(len(f._callbacks) == 1 for f in (fut2, fut3))
 
 
-class TestCancelFuturesAndWait:
-    async def test_does_nothing_if_there_are_no_futures(self):
-        await hp.cancel_futures_and_wait()
-
-    async def test_does_nothing_if_all_the_futures_are_already_done(self):
-        fut1 = hp.create_future()
-        fut2 = hp.create_future()
-        fut3 = hp.create_future()
-
-        fut1.set_result(True)
-        fut2.set_exception(ValueError("YEAP"))
-        fut3.cancel()
-
-        await hp.cancel_futures_and_wait(fut1, fut2, fut3)
-
-    async def test_cancels_running_tasks(self):
-        called = []
-
-        async def run1():
-            try:
-                await asyncio.sleep(100)
-            except asyncio.CancelledError:
-                called.append("run1")
-
-        async def run2():
-            called.append("run2")
-            await asyncio.sleep(50)
-
-        async def run3():
-            raise ValueError("HELLO")
-
-        fut1 = hp.async_as_background(run1())
-        fut2 = hp.async_as_background(run2())
-        fut3 = hp.async_as_background(run3())
-
-        await asyncio.sleep(0.01)
-        await hp.cancel_futures_and_wait(fut1, fut2, fut3)
-        assert sorted(called) == ["run1", "run2"]
-
-
 class TestEnsuringAexit:
     async def test_ensures_aexit_is_called_on_exception(self) -> None:
         error = Exception("NOPE")

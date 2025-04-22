@@ -216,7 +216,8 @@ class ResultStreamer:
         task.gen = gen
 
         if self.final_future.done():
-            await _futures.cancel_futures_and_wait(
+            task.cancel()
+            await _future_waiters.wait_for_all_futures(
                 task, name=f"ResultStreamer({self.name})::add_generator[already_stopped_task]"
             )
             await _future_waiters.wait_for_first_future(
@@ -248,7 +249,8 @@ class ResultStreamer:
                     task, name=f"ResultStreamer({self.name})::add_task[force_already_stopped]"
                 )
             else:
-                await _futures.cancel_futures_and_wait(
+                task.cancel()
+                await _future_waiters.wait_for_all_futures(
                     task, name=f"ResultStreamer({self.name})::add_task[already_stopped]"
                 )
             return task

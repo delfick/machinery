@@ -58,24 +58,3 @@ async def wait_for_first_future(*futs, name=None):
     finally:
         for fut in unique:
             fut.remove_done_callback(done)
-
-
-async def cancel_futures_and_wait(*futs, name=None):
-    """
-    Cancel the provided futures and wait for them all to finish. We will still
-    await the futures if they are all already done to ensure no warnings about
-    futures being destroyed while still pending.
-    """
-    if not futs:
-        return
-
-    waiting = []
-
-    for fut in futs:
-        if not fut.done():
-            fut.cancel()
-            waiting.append(fut)
-
-    await wait_for_all_futures(
-        *waiting, name=f"||cancel_futures_and_wait({name})[wait_for_everything]"
-    )

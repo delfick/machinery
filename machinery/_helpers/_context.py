@@ -309,18 +309,6 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
             for fut in unique:
                 fut.remove_done_callback(done)
 
-    async def cancel_futures_and_wait(self, *futs: _protocols.WaitByCallback[Any]) -> None:
-        """
-        Cancel the provided futures and wait for them all to finish.
-        """
-        if not futs:
-            return
-
-        for fut in futs:
-            fut.cancel()
-
-        await self.wait_for_all_futures(*futs)
-
     async def async_with_timeout[T_Ret](
         self,
         coro: Coroutine[object, object, T_Ret],

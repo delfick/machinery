@@ -13,7 +13,6 @@ ChildOfFuture = _helpers.future_wrappers.ChildOfFuture
 
 wait_for_all_futures = _helpers.future_waiters.wait_for_all_futures
 wait_for_first_future = _helpers.future_waiters.wait_for_first_future
-cancel_futures_and_wait = _helpers.future_waiters.cancel_futures_and_wait
 
 stop_async_generator = _helpers.futures.stop_async_generator
 fut_to_string = _helpers.futures.fut_to_string

@@ -88,8 +88,6 @@ class CTX[T_Tramp: Tramp](Protocol):
 
     async def wait_for_all_futures(self, *futs: WaitByCallback[Any]) -> None: ...
 
-    async def cancel_futures_and_wait(self, *futs: WaitByCallback[Any]) -> None: ...
-
     async def async_with_timeout[T_Ret](
         self,
         coro: Coroutine[object, object, T_Ret],
