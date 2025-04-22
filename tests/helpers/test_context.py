@@ -965,3 +965,68 @@ class TestCTX:
 
                 fut1 = await run_test(cancel)
                 assert fut1.cancelled()
+
+    class TestWaitForAllFutures:
+        async def test_it_does_nothing_if_no_futures(self, ctx: hp.CTX) -> None:
+            await ctx.wait_for_all_futures()
+
+        async def test_it_only_returns_if_all_futures_are_done(
+            self, ctx: hp.CTX, loop: asyncio.AbstractEventLoop
+        ) -> None:
+            fut1: asyncio.Future[None] = loop.create_future()
+            fut2: asyncio.Future[None] = loop.create_future()
+            fut2.set_result(None)
+            fut3: asyncio.Future[None] = loop.create_future()
+
+            assert not fut1._callbacks
+            assert not fut2._callbacks
+            assert not fut3._callbacks
+
+            assert not fut1.done()
+            assert fut2.done()
+            assert not fut3.done()
+
+            start = asyncio.Event()
+            done = asyncio.Event()
+
+            async def waiter() -> None:
+                start.set()
+                await ctx.wait_for_all_futures(fut1, fut2, fut3, fut2)
+                done.set()
+
+            waiting = ctx.async_as_background(waiter())
+            await start.wait()
+            assert not done.is_set()
+
+            assert fut1._callbacks
+            assert not fut2._callbacks
+            assert fut3._callbacks
+
+            class ComputerSaysNo(Exception):
+                pass
+
+            error = ComputerSaysNo()
+
+            fut1.set_exception(error)
+            with pytest.raises(ComputerSaysNo):
+                await fut1
+
+            assert not done.is_set()
+            assert not waiting.done()
+
+            assert not fut1._callbacks
+            assert not fut2._callbacks
+            assert fut3._callbacks
+
+            fut3.cancel()
+            await done.wait()
+            assert waiting.done()
+            assert fut3.cancelled()
+
+            assert not fut1._callbacks
+            assert not fut2._callbacks
+            assert not fut3._callbacks
+
+            assert fut1.done()
+            assert fut2.done()
+            assert fut3.done()
