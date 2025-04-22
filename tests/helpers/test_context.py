@@ -4,9 +4,10 @@ import dataclasses
 import logging
 import sys
 import types
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 import pytest
+import pytest_subtests
 
 from machinery import helpers as hp
 from machinery._helpers import _context
@@ -856,3 +857,111 @@ class TestCTX:
             with pytest.raises(ComputerSaysNo):
                 await c1
             assert called == []
+
+    class TestWaitForFirstFuture:
+        async def test_it_does_nothing_if_no_futures(self, ctx: hp.CTX) -> None:
+            await ctx.wait_for_first_future()
+
+        async def test_it_returns_if_any_futures_already_done(
+            self, ctx: hp.CTX, loop: asyncio.AbstractEventLoop
+        ) -> None:
+            fut1: asyncio.Future[None] = loop.create_future()
+            fut2: asyncio.Future[None] = loop.create_future()
+            fut2.set_result(None)
+
+            assert not fut1._callbacks
+            assert not fut2._callbacks
+
+            assert not fut1.done()
+            assert fut2.done()
+
+            await ctx.wait_for_first_future(fut1, fut2)
+            assert not fut1.done()
+            assert fut2.done()
+
+            await ctx.wait_for_first_future(fut2, fut1)
+            assert not fut1.done()
+            assert fut2.done()
+
+            await ctx.wait_for_first_future(fut2, fut1, fut1)
+            assert not fut1.done()
+            assert fut2.done()
+
+            await ctx.wait_for_first_future(fut2, fut2, fut1)
+            assert not fut1.done()
+            assert fut2.done()
+
+            assert not fut1._callbacks
+            assert not fut2._callbacks
+
+        async def test_it_returns_when_first_future_completes(
+            self, ctx: hp.CTX, loop: asyncio.AbstractEventLoop, subtests: pytest_subtests.SubTests
+        ) -> None:
+            async def run_test(
+                modify: Callable[[asyncio.Future[None]], None],
+            ) -> asyncio.Future[None]:
+                fut1: asyncio.Future[None] = loop.create_future()
+                fut2: asyncio.Future[None] = loop.create_future()
+
+                start = asyncio.Event()
+                done = asyncio.Event()
+
+                async def wait() -> None:
+                    start.set()
+                    await ctx.wait_for_first_future(fut1, fut2)
+                    assert fut1.done()
+                    assert not fut2.done()
+                    assert not fut1._callbacks
+                    assert not fut2._callbacks
+                    done.set()
+
+                assert not fut1._callbacks
+                assert not fut2._callbacks
+
+                ctx.async_as_background(wait())
+                await start.wait()
+
+                assert fut1._callbacks
+                assert fut2._callbacks
+                assert not fut1.done()
+                assert not fut2.done()
+
+                modify(fut1)
+
+                await done.wait()
+
+                assert fut1.done()
+                assert not fut2.done()
+                assert not fut1._callbacks
+                assert not fut2._callbacks
+
+                return fut1
+
+            with subtests.test("normal_result"):
+
+                def set_result(fut: asyncio.Future[None]) -> None:
+                    fut.set_result(None)
+
+                fut1 = await run_test(set_result)
+                assert fut1.result() is None
+
+            with subtests.test("set_exception"):
+
+                class ComputerSaysNo(Exception):
+                    pass
+
+                error = ComputerSaysNo()
+
+                def set_exception(fut: asyncio.Future[None]) -> None:
+                    fut.set_exception(error)
+
+                fut1 = await run_test(set_exception)
+                assert fut1.exception() is error
+
+            with subtests.test("cancel"):
+
+                def cancel(fut: asyncio.Future[None]) -> None:
+                    fut.cancel()
+
+                fut1 = await run_test(cancel)
+                assert fut1.cancelled()
