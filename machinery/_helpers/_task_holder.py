@@ -1,5 +1,6 @@
 import asyncio
 import types
+from collections.abc import Coroutine, Iterator
 from typing import Self
 
 from . import _async_mixin, _context, _protocols
@@ -80,27 +81,29 @@ class TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         async with _async_mixin.ensure_aexit(self):
             return await self.start()
 
-    def __init__(self, *, ctx: _context.CTX[T_Tramp], name=None):
+    def __init__(self, *, ctx: _context.CTX[T_Tramp], name: str | None = None) -> None:
         self.name = name
 
-        self.ts: list[_protocols.WaitByCallback] = []
+        self.ts: list[_protocols.WaitByCallback[object]] = []
         self.ctx = ctx.child(name=f"TaskHolder({self.name})::__init__[ctx]")
 
-        self._cleaner = None
+        self._cleaner: asyncio.Task[None] | None = None
         self._cleaner_waiter = asyncio.Event()
 
-    def add(self, coro, *, silent=False):
+    def add[T_Ret](
+        self, coro: Coroutine[object, object, T_Ret], *, silent: bool = False
+    ) -> asyncio.Task[T_Ret]:
         return self.add_task(self.ctx.async_as_background(coro, silent=silent))
 
-    def _set_cleaner_waiter(self, res):
+    def _set_cleaner_waiter(self, res: _protocols.FutureStatus[object]) -> None:
         self._cleaner_waiter.set()
 
-    def add_task(self, task):
+    def add_task[T_Ret](self, task: asyncio.Task[T_Ret]) -> asyncio.Task[T_Ret]:
         if not self._cleaner:
             t = self.ctx.async_as_background(self.cleaner())
             self._cleaner = t
 
-            def remove_cleaner(res):
+            def remove_cleaner(res: _protocols.FutureStatus[None]) -> None:
                 if self._cleaner is t:
                     self._cleaner = None
 
@@ -141,7 +144,7 @@ class TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
             finally:
                 self.ctx.cancel()
 
-    async def _final(self):
+    async def _final(self) -> None:
         if self._cleaner:
             self._cleaner.cancel()
             await self.ctx.wait_for_all_futures(self._cleaner)
@@ -149,22 +152,22 @@ class TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         await self.ctx.wait_for_all_futures(self.ctx.async_as_background(self.clean()))
 
     @property
-    def pending(self):
+    def pending(self) -> int:
         return sum(1 for t in self.ts if not t.done())
 
-    def __contains__(self, task):
+    def __contains__(self, task: asyncio.Task[object]) -> bool:
         return task in self.ts
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[_protocols.WaitByCallback[object]]:
         return iter(self.ts)
 
-    async def cleaner(self):
+    async def cleaner(self) -> None:
         while True:
             await self._cleaner_waiter.wait()
             self._cleaner_waiter.clear()
             await self.clean()
 
-    async def clean(self):
+    async def clean(self) -> None:
         destroyed = []
         remaining = []
         for t in self.ts:

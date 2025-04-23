@@ -2,11 +2,12 @@ import asyncio
 import collections
 import queue as stdqueue
 import types
+from collections.abc import AsyncGenerator, Iterator
 
 from . import _context, _protocols
 
 
-class SyncQueue[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
+class SyncQueue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     """
     A simple wrapper around the standard library non async queue.
 
@@ -29,15 +30,20 @@ class SyncQueue[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     """
 
     def __init__(
-        self, *, ctx: _context.CTX[T_Tramp], timeout=0.05, empty_on_finished=False, name=None
-    ):
+        self,
+        *,
+        ctx: _context.CTX[T_Tramp],
+        timeout: float = 0.05,
+        empty_on_finished: bool = False,
+        name: str | None = None,
+    ) -> None:
         self.name = name
         self.timeout = timeout
-        self.collection: stdqueue.Queue = stdqueue.Queue()
+        self.collection: stdqueue.Queue[T_Item] = stdqueue.Queue()
         self.ctx = ctx.child(name=f"SyncQueue({self.name})::__init__[ctx]")
         self.empty_on_finished = empty_on_finished
 
-    def append(self, item):
+    def append(self, item: T_Item) -> None:
         self.collection.put(item)
 
     async def finish(
@@ -48,10 +54,10 @@ class SyncQueue[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     ) -> None:
         self.ctx.cancel()
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[T_Item]:
         return iter(self.get_all())
 
-    def get_all(self):
+    def get_all(self) -> Iterator[T_Item]:
         while True:
             if self.ctx.done():
                 break
@@ -70,7 +76,7 @@ class SyncQueue[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
             for nxt in self.remaining():
                 yield nxt
 
-    def remaining(self):
+    def remaining(self) -> Iterator[T_Item]:
         while True:
             if not self.collection.empty():
                 yield self.collection.get(block=False)
@@ -78,7 +84,7 @@ class SyncQueue[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
                 break
 
 
-class Queue[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
+class Queue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     """
     A custom async queue class.
 
@@ -108,9 +114,15 @@ class Queue[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     class Done:
         pass
 
-    def __init__(self, *, ctx: _context.CTX[T_Tramp], empty_on_finished=False, name=None):
+    def __init__(
+        self,
+        *,
+        ctx: _context.CTX[T_Tramp],
+        empty_on_finished: bool = False,
+        name: str | None = None,
+    ) -> None:
         self.name = name
-        self.collection: collections.deque = collections.deque()
+        self.collection: collections.deque[T_Item] = collections.deque()
         self.ctx = ctx.child(name=f"Queue({self.name})::__init__[ctx]")
         self.waiter = asyncio.Event()
         self.empty_on_finished = empty_on_finished
@@ -118,7 +130,7 @@ class Queue[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         self.stop = False
         self.ctx.add_done_callback(self._stop_waiter)
 
-    def _stop_waiter(self, res):
+    def _stop_waiter(self, res: _protocols.FutureStatus[None]) -> None:
         self.waiter.set()
 
     async def finish(
@@ -129,14 +141,14 @@ class Queue[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     ) -> None:
         self.ctx.cancel()
 
-    def append(self, item):
+    def append(self, item: T_Item) -> None:
         self.collection.append(item)
         self.waiter.set()
 
-    def __aiter__(self):
+    def __aiter__(self) -> AsyncGenerator[T_Item]:
         return self.get_all()
 
-    async def get_all(self):
+    async def get_all(self) -> AsyncGenerator[T_Item]:
         if not self.collection:
             self.waiter.clear()
 
@@ -163,6 +175,6 @@ class Queue[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
             yield nxt
 
-    def remaining(self):
+    def remaining(self) -> Iterator[T_Item]:
         while self.collection:
             yield self.collection.popleft()
