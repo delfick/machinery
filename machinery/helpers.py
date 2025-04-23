@@ -28,7 +28,6 @@ find_and_apply_result = _helpers.futures.find_and_apply_result
 
 add_error = _helpers.other.add_error
 a_temp_file = _helpers.other.a_temp_file
-nested_dict_retrieve = _helpers.other.nested_dict_retrieve
 
 TaskHolder = _helpers.task_holder.TaskHolder
 

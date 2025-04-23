@@ -83,25 +83,3 @@ class TestATempFile:
             fle.close()
             os.remove(fle.name)
         assert not os.path.exists(fle.name)
-
-
-class TestNestedDictRetrieve:
-    def test_returns_us_the_dflt_if_we_cant_find_the_key(self):
-        data = {"one": {"two": {"three": 3}}}
-        dflt = mock.Mock(name="dflt")
-        for keys in (
-            ["one", "four"],
-            ["four", "five"],
-            ["one", "two", "five"],
-            ["one", "two", "three", "four"],
-        ):
-            assert hp.nested_dict_retrieve(data, keys, dflt) is dflt
-
-    def test_returns_us_what_it_finds(self):
-        data = {"one": {"two": {"three": 3}}}
-        dflt = mock.Mock(name="dflt")
-
-        assert hp.nested_dict_retrieve(data, [], dflt) == data
-        assert hp.nested_dict_retrieve(data, ["one"], dflt) == {"two": {"three": 3}}
-        assert hp.nested_dict_retrieve(data, ["one", "two"], dflt) == {"three": 3}
-        assert hp.nested_dict_retrieve(data, ["one", "two", "three"], dflt) == 3
