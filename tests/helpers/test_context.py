@@ -3,13 +3,15 @@ import contextlib
 import dataclasses
 import logging
 import sys
+import time
 import types
-from collections.abc import Callable, Iterator
+from collections.abc import AsyncGenerator, Callable, Iterator
 
 import pytest
 import pytest_subtests
 
 from machinery import helpers as hp
+from machinery import test_helpers as thp
 from machinery._helpers import _context
 
 log = logging.getLogger()
@@ -1030,3 +1032,142 @@ class TestCTX:
             assert fut1.done()
             assert fut2.done()
             assert fut3.done()
+
+    class TestAsyncWithTimeout:
+        @pytest.fixture
+        def fake_time(self) -> Iterator[thp.FakeTime]:
+            with thp.FakeTime() as t:
+                yield t
+
+        @pytest.fixture
+        async def fake_mocked_later(
+            self, fake_time: thp.FakeTime
+        ) -> AsyncGenerator[thp.MockedCallLater]:
+            async with thp.MockedCallLater(fake_time) as m:
+                yield m
+
+        async def test_it_raises_cancelled_error_by_default_if_time_runs_out(
+            self,
+            fake_mocked_later: thp.MockedCallLater,
+            ctx: hp.CTX,
+            loop: asyncio.AbstractEventLoop,
+        ) -> None:
+            async def wait_forever() -> None:
+                fut: asyncio.Future[None] = loop.create_future()
+                try:
+                    await fut
+                finally:
+                    fut.cancel()
+
+            now = time.time()
+            with pytest.raises(asyncio.CancelledError):
+                await ctx.async_with_timeout(wait_forever(), timeout=10, name="wait_forever")
+
+            assert 9 < time.time() - now < 11
+
+        async def test_it_uses_alternate_error_if_provided(
+            self,
+            fake_mocked_later: thp.MockedCallLater,
+            ctx: hp.CTX,
+            loop: asyncio.AbstractEventLoop,
+        ) -> None:
+            class ComputerSaysNo(Exception):
+                pass
+
+            async def wait_forever() -> None:
+                fut: asyncio.Future[None] = loop.create_future()
+                try:
+                    await fut
+                finally:
+                    fut.cancel()
+
+            now = time.time()
+            error = ComputerSaysNo()
+
+            with pytest.raises(ComputerSaysNo) as e:
+                await ctx.async_with_timeout(
+                    wait_forever(), timeout=10, timeout_error=error, name="wait_forever"
+                )
+
+            assert 9 < time.time() - now < 11
+            assert e.value is error
+
+        async def test_it_passes_on_result(
+            self,
+            fake_mocked_later: thp.MockedCallLater,
+            ctx: hp.CTX,
+            loop: asyncio.AbstractEventLoop,
+        ) -> None:
+            async def wait_forever() -> int:
+                fut: asyncio.Future[int] = loop.create_future()
+                loop.call_later(1, fut.set_result, 40)
+                return await fut
+
+            now = time.time()
+            assert (
+                await ctx.async_with_timeout(wait_forever(), timeout=10, name="get_result")
+            ) == 40
+            assert 0 < time.time() - now < 2
+
+        async def test_it_passes_on_exception(
+            self,
+            fake_mocked_later: thp.MockedCallLater,
+            ctx: hp.CTX,
+            loop: asyncio.AbstractEventLoop,
+        ) -> None:
+            class ComputerSaysNo(Exception):
+                pass
+
+            error = ComputerSaysNo()
+
+            async def wait_forever() -> int:
+                fut: asyncio.Future[int] = loop.create_future()
+                loop.call_later(3, fut.set_exception, error)
+                return await fut
+
+            now = time.time()
+            with pytest.raises(ComputerSaysNo) as e:
+                await ctx.async_with_timeout(wait_forever(), timeout=10, name="get_exception")
+
+            assert 2 < time.time() - now < 4
+            assert e.value is error
+
+        async def test_it_passes_on_cancellation(
+            self,
+            fake_mocked_later: thp.MockedCallLater,
+            ctx: hp.CTX,
+            loop: asyncio.AbstractEventLoop,
+        ) -> None:
+            async def wait_forever() -> int:
+                fut: asyncio.Future[int] = loop.create_future()
+                loop.call_later(2, fut.cancel)
+                return await fut
+
+            now = time.time()
+            with pytest.raises(asyncio.CancelledError):
+                await ctx.async_with_timeout(wait_forever(), timeout=10, name="get_cancelled")
+
+            assert 1 < time.time() - now < 3
+
+        async def test_it_passes_on_even_if_custom_timeout_error(
+            self,
+            fake_mocked_later: thp.MockedCallLater,
+            ctx: hp.CTX,
+            loop: asyncio.AbstractEventLoop,
+        ) -> None:
+            class ComputerSaysNo(Exception):
+                pass
+
+            async def wait_forever() -> int:
+                fut: asyncio.Future[int] = loop.create_future()
+                loop.call_later(2, fut.cancel)
+                return await fut
+
+            now = time.time()
+            error = ComputerSaysNo()
+            with pytest.raises(asyncio.CancelledError):
+                await ctx.async_with_timeout(
+                    wait_forever(), timeout=10, timeout_error=error, name="get_cancelled"
+                )
+
+            assert 1 < time.time() - now < 3

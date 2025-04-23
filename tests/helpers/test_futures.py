@@ -1,8 +1,6 @@
 import asyncio
 import dataclasses
-import time
 import types
-import uuid
 from collections.abc import Sequence
 from unittest import mock
 
@@ -66,40 +64,6 @@ class TestFutHasCallback:
         assert not hp.fut_has_callback(fut, func2)
         fut.add_done_callback(func2)
         assert hp.fut_has_callback(fut, func2)
-
-
-class TestAsyncWithTimeout:
-    async def test_returns_the_result_of_waiting_on_the_coroutine(self):
-        val = str(uuid.uuid1())
-
-        async def func():
-            return val
-
-        res = await hp.async_with_timeout(func(), timeout=10)
-        assert res == val
-
-    async def test_cancels_the_coroutine_if_it_doesnt_respond(self):
-        async def func():
-            await asyncio.sleep(2)
-
-        start = time.time()
-        with pytest.raises(asyncio.CancelledError):
-            await hp.async_with_timeout(func(), timeout=0.1)
-        assert time.time() - start < 0.5
-
-    async def test_cancels_the_coroutine_and_raises_timeout_error(self):
-        error = ValueError("Blah")
-
-        async def func():
-            try:
-                await asyncio.sleep(2)
-            except asyncio.CancelledError:
-                assert False, "Expected it to just raise the error rather than cancelling first"
-
-        start = time.time()
-        with pytest.raises(ValueError, match="Blah"):
-            await hp.async_with_timeout(func(), timeout=0.1, timeout_error=error)
-        assert time.time() - start < 0.5
 
 
 class TestAsyncAsBackground:

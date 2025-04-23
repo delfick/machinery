@@ -163,62 +163,6 @@ def async_as_background(coroutine, silent=False):
     return t
 
 
-async def async_with_timeout(
-    coroutine, *, timeout=10, timeout_error=None, silent=False, name=None
-):
-    """
-    Run a coroutine as a task until it's complete or times out.
-
-    If time runs out the task is cancelled.
-
-    If timeout_error is defined, that is raised instead of asyncio.CancelledError
-    on timeout.
-
-    .. code-block:: python
-
-        from machinery.helpers import hp
-
-        import asyncio
-
-
-        async def my_coroutine():
-            await asyncio.sleep(120)
-
-        await hp.async_with_timeout(my_coroutine(), timeout=20)
-    """
-    f = create_future(name=f"||async_with_timeout({name})[final]")
-    t = async_as_background(coroutine, silent=silent)
-
-    def pass_result(res):
-        if res.cancelled():
-            f.cancel()
-            return
-
-        if res.exception() is not None:
-            if not f.done():
-                f.set_exception(t.exception())
-            return
-
-        if t.done() and not f.done():
-            f.set_result(t.result())
-
-    t.add_done_callback(pass_result)
-
-    def set_timeout():
-        if not t.done():
-            if timeout_error and not f.done():
-                f.set_exception(timeout_error)
-
-            t.cancel()
-            f.cancel()
-
-    handle = get_event_loop().call_later(timeout, set_timeout)
-    try:
-        return await f
-    finally:
-        handle.cancel()
-
-
 def transfer_result[T_Res](
     fut: asyncio.Future[T_Res],
     errors_only: bool = False,

@@ -22,7 +22,6 @@ get_event_loop = _helpers.futures.get_event_loop
 create_future = _helpers.futures.create_future
 fut_has_callback = _helpers.futures.fut_has_callback
 async_as_background = _helpers.futures.async_as_background
-async_with_timeout = _helpers.futures.async_with_timeout
 transfer_result = _helpers.futures.transfer_result
 noncancelled_results_from_futs = _helpers.futures.noncancelled_results_from_futs
 find_and_apply_result = _helpers.futures.find_and_apply_result

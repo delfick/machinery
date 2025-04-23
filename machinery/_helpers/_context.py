@@ -312,9 +312,9 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     async def async_with_timeout[T_Ret](
         self,
         coro: Coroutine[object, object, T_Ret],
-        silent: bool = True,
         *,
         name: str,
+        silent: bool = True,
         timeout: int = 10,
         timeout_error: BaseException | None = None,
     ) -> T_Ret:
