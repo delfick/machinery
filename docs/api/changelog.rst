@@ -6,9 +6,7 @@ Changelog
 .. _release-0.2.0:
 
 0.2.0 - TBD
-    * Improved ``hp.memoized_property`` and changed it so that it requires
-      an explicit ``_memoized_cache`` property on the class to contain
-      the cached information.
+    * Removed ``hp.memoized_property``
     * Removed ``hp.ExceptionGroup`` in favour of python built in ExceptionGroup
     * Removed ``hp.AsyncCMMixin`` in favour of being explicit about what it does
       on classes that use it.

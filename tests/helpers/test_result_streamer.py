@@ -4,7 +4,6 @@ import itertools
 import sys
 import traceback
 from collections.abc import AsyncGenerator
-from typing import ClassVar
 from unittest import mock
 
 import pytest
@@ -70,11 +69,14 @@ class TestResultStreamer:
             class V:
                 final_future = hp.create_future()
                 error_catcher = mock.Mock(name="error_catcher")
-                _memoized_cache: ClassVar[dict[str, object]] = {}
 
-                @hp.memoized_property
+                @property
                 def streamer(s):
-                    return hp.ResultStreamer(s.final_future, error_catcher=s.error_catcher)
+                    if not hasattr(s, "_streamer"):
+                        s._streamer = hp.ResultStreamer(
+                            s.final_future, error_catcher=s.error_catcher
+                        )
+                    return s._streamer
 
                 async def retrieve(s):
                     results = []
@@ -199,11 +201,12 @@ class TestResultStreamer:
         async def V(self) -> AsyncGenerator[object]:
             class V:
                 final_future = hp.create_future()
-                _memoized_cache: ClassVar[dict[str, object]] = {}
 
-                @hp.memoized_property
+                @property
                 def streamer(s):
-                    return hp.ResultStreamer(s.final_future)
+                    if not hasattr(s, "_streamer"):
+                        s._streamer = hp.ResultStreamer(s.final_future)
+                    return s._streamer
 
             v = V()
             try:
@@ -252,11 +255,12 @@ class TestResultStreamer:
         async def V(self) -> AsyncGenerator[object]:
             class V:
                 final_future = hp.create_future()
-                _memoized_cache: ClassVar[dict[str, object]] = {}
 
-                @hp.memoized_property
+                @property
                 def streamer(s):
-                    return hp.ResultStreamer(s.final_future)
+                    if not hasattr(s, "_streamer"):
+                        s._streamer = hp.ResultStreamer(s.final_future)
+                    return s._streamer
 
             v = V()
             try:

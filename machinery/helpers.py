@@ -5,7 +5,6 @@ protocols = _helpers.protocols
 CTX = _helpers.context.CTX
 Tramp = _helpers.context.Tramp
 
-memoized_property = _helpers.memoized_property.memoized_property
 ensure_aexit = _helpers.async_mixin.ensure_aexit
 
 ResettableFuture = _helpers.future_wrappers.ResettableFuture
