@@ -70,9 +70,6 @@ select = [
     "F",
 ]
 
-[tool.ruff.lint.per-file-ignores]
-"tests/helpers/test_result_streamer.py" = ["T201"]
-
 [tool.mypy]
 exclude = '''(?x)(
     .DS_Store

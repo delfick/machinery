@@ -27,8 +27,6 @@ find_and_apply_result = _helpers.futures.find_and_apply_result
 
 TaskHolder = _helpers.task_holder.TaskHolder
 
-ResultStreamer = _helpers.result_streamer.ResultStreamer
-
 ATicker = _helpers.ticker.ATicker
 tick = _helpers.ticker.tick
 
