@@ -1,17 +1,27 @@
 import asyncio
+import logging
 import sys
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Iterator
 from unittest import mock
 
 import pytest
 
 from machinery import helpers as hp
 
+log = logging.getLogger()
+
+
+@pytest.fixture
+def ctx() -> Iterator[hp.CTX]:
+    tramp: hp.protocols.Tramp = hp.Tramp(log=log)
+    with hp.CTX.beginning(name="::", tramp=tramp) as ctx:
+        yield ctx
+
 
 class TestStopAsyncGenerator:
-    async def test_can_cancel_a_generator(self) -> None:
+    async def test_can_cancel_a_generator(self, loop: asyncio.AbstractEventLoop) -> None:
         called: list[object] = []
-        ready = hp.create_future()
+        ready = loop.create_future()
 
         async def d() -> AsyncGenerator[int]:
             try:
@@ -38,9 +48,11 @@ class TestStopAsyncGenerator:
             "finally",
         ]
 
-    async def test_can_throw_an_arbitrary_exception_into_the_generator(self) -> None:
+    async def test_can_throw_an_arbitrary_exception_into_the_generator(
+        self, loop: asyncio.AbstractEventLoop
+    ) -> None:
         called: list[object] = []
-        ready = hp.create_future()
+        ready = loop.create_future()
 
         async def d() -> AsyncGenerator[int]:
             try:
@@ -78,9 +90,11 @@ class TestStopAsyncGenerator:
 
         await hp.stop_async_generator(gen)
 
-    async def test_works_if_generator_is_already_complete_by_cancellation(self) -> None:
+    async def test_works_if_generator_is_already_complete_by_cancellation(
+        self, loop: asyncio.AbstractEventLoop
+    ) -> None:
         async def d() -> AsyncGenerator[bool]:
-            fut = hp.create_future()
+            fut = loop.create_future()
             fut.cancel()
             await fut
             yield True
@@ -133,8 +147,10 @@ class TestStopAsyncGenerator:
             await hp.stop_async_generator(gen)
         assert called == ["start", 0, 1, 2, 3, 4, 5, "cancel", "finally"]
 
-    async def test_works_if_generator_is_cancelled_inside(self) -> None:
-        waiter = hp.create_future()
+    async def test_works_if_generator_is_cancelled_inside(
+        self, loop: asyncio.AbstractEventLoop
+    ) -> None:
+        waiter = loop.create_future()
 
         called: list[object] = []
 
@@ -165,8 +181,10 @@ class TestStopAsyncGenerator:
         assert called == ["start", 0, 1, 2, 3, 4, 5, "cancel", "finally"]
         await hp.stop_async_generator(gen)
 
-    async def test_works_if_generator_is_cancelled_outside(self) -> None:
-        waiter = hp.create_future()
+    async def test_works_if_generator_is_cancelled_outside(
+        self, ctx: hp.CTX, loop: asyncio.AbstractEventLoop
+    ) -> None:
+        waiter = loop.create_future()
 
         called: list[object] = []
 
@@ -193,10 +211,10 @@ class TestStopAsyncGenerator:
             async for i in gen:
                 if i == 5:
                     waiter.set_result(True)
-                    await hp.create_future()
+                    await loop.create_future()
 
         with pytest.raises(asyncio.CancelledError):
-            task = hp.async_as_background(consume())
+            task = ctx.async_as_background(consume())
             await waiter
             task.cancel()
             await task

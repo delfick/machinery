@@ -1,10 +1,11 @@
+import asyncio
 import types
 from typing import Self
 
-from . import _async_mixin, _future_waiters, _future_wrappers, _futures
+from . import _async_mixin, _context, _protocols
 
 
-class TaskHolder:
+class TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     """
     An object for managing asynchronous coroutines.
 
@@ -15,12 +16,12 @@ class TaskHolder:
         from machinery import helpers as hp
 
 
-        final_future = hp.create_future()
+        ctx: hp.CTX = ...
 
         async def something():
             await asyncio.sleep(5)
 
-        with hp.TaskHolder(final_future) as ts:
+        with hp.TaskHolder(ctx=ctx) as ts:
             ts.add(something())
             ts.add(something())
 
@@ -31,12 +32,12 @@ class TaskHolder:
         from machinery import helpers as hp
 
 
-        final_future = hp.create_future()
+        ctx: hp.CTX = ...
 
         async def something():
             await asyncio.sleep(5)
 
-        ts = hp.TaskHolder(final_future)
+        ts = hp.TaskHolder(ctx=ctx)
 
         try:
             ts.add(something())
@@ -48,7 +49,7 @@ class TaskHolder:
     exit until all coroutines have finished. During this time you may still
     use ``ts.add`` or ``ts.add_task`` on the holder.
 
-    If the ``final_future`` is cancelled before all the tasks have completed
+    If the ``ctx`` is cancelled before all the tasks have completed
     then the tasks will be cancelled and properly waited on so their finally
     blocks run before the context manager finishes.
 
@@ -79,31 +80,25 @@ class TaskHolder:
         async with _async_mixin.ensure_aexit(self):
             return await self.start()
 
-    def __init__(self, final_future, *, name=None):
+    def __init__(self, *, ctx: _context.CTX[T_Tramp], name=None):
         self.name = name
 
-        self.ts = []
-        self.final_future = _future_wrappers.ChildOfFuture(
-            final_future, name=f"TaskHolder({self.name})::__init__[final_future]"
-        )
+        self.ts: list[_protocols.WaitByCallback] = []
+        self.ctx = ctx.child(name=f"TaskHolder({self.name})::__init__[ctx]")
 
         self._cleaner = None
-        self._cleaner_waiter = _future_wrappers.ResettableFuture(
-            name=f"TaskHolder({self.name})::__init__[cleaner_waiter]"
-        )
+        self._cleaner_waiter = asyncio.Event()
 
     def add(self, coro, *, silent=False):
-        return self.add_task(_futures.async_as_background(coro, silent=silent))
+        return self.add_task(self.ctx.async_as_background(coro, silent=silent))
 
     def _set_cleaner_waiter(self, res):
-        self._cleaner_waiter.reset()
-        self._cleaner_waiter.set_result(True)
+        self._cleaner_waiter.set()
 
     def add_task(self, task):
         if not self._cleaner:
-            self._cleaner = _futures.async_as_background(self.cleaner())
-
-            t = self._cleaner
+            t = self.ctx.async_as_background(self.cleaner())
+            self._cleaner = t
 
             def remove_cleaner(res):
                 if self._cleaner is t:
@@ -124,47 +119,34 @@ class TaskHolder:
         exc: BaseException | None = None,
         tb: types.TracebackType | None = None,
     ) -> None:
-        if exc and not self.final_future.done():
-            self.final_future.set_exception(exc)
+        if exc and not self.ctx.done():
+            self.ctx.set_exception(exc)
 
         try:
             while any(not t.done() for t in self.ts):
                 for t in self.ts:
-                    if self.final_future.done():
+                    if self.ctx.done():
                         t.cancel()
 
                 if self.ts:
-                    if self.final_future.done():
-                        await _future_waiters.wait_for_all_futures(
-                            self.final_future,
-                            *self.ts,
-                            name=f"TaskHolder({self.name})::finish[wait_for_all_tasks]",
-                        )
+                    if self.ctx.done():
+                        await self.ctx.wait_for_all_futures(self.ctx, *self.ts)
                     else:
-                        await _future_waiters.wait_for_first_future(
-                            self.final_future,
-                            *self.ts,
-                            name=f"TaskHolder({self.name})::finish[wait_for_another_task]",
-                        )
+                        await self.ctx.wait_for_first_future(self.ctx, *self.ts)
 
                     self.ts = [t for t in self.ts if not t.done()]
         finally:
             try:
                 await self._final()
             finally:
-                self.final_future.cancel()
+                self.ctx.cancel()
 
     async def _final(self):
         if self._cleaner:
             self._cleaner.cancel()
-            await _future_waiters.wait_for_all_futures(
-                self._cleaner, name=f"TaskHolder({self.name})::finish[finally_wait_for_cleaner]"
-            )
+            await self.ctx.wait_for_all_futures(self._cleaner)
 
-        await _future_waiters.wait_for_all_futures(
-            _futures.async_as_background(self.clean()),
-            name=f"TaskHolder({self.name})::finish[finally_wait_for_clean]",
-        )
+        await self.ctx.wait_for_all_futures(self.ctx.async_as_background(self.clean()))
 
     @property
     def pending(self):
@@ -178,8 +160,8 @@ class TaskHolder:
 
     async def cleaner(self):
         while True:
-            await self._cleaner_waiter
-            self._cleaner_waiter.reset()
+            await self._cleaner_waiter.wait()
+            self._cleaner_waiter.clear()
             await self.clean()
 
     async def clean(self):
@@ -191,7 +173,5 @@ class TaskHolder:
             else:
                 remaining.append(t)
 
-        await _future_waiters.wait_for_all_futures(
-            *destroyed, name=f"TaskHolder({self.name})::clean[wait_for_destroyed]"
-        )
+        await self.ctx.wait_for_all_futures(*destroyed)
         self.ts = remaining + [t for t in self.ts if t not in destroyed and t not in remaining]

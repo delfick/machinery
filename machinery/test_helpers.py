@@ -1,5 +1,6 @@
 import asyncio
 import inspect
+import logging
 import time
 import types
 from collections import defaultdict
@@ -9,9 +10,7 @@ from unittest import mock
 
 from . import helpers as hp
 
-
-def get_event_loop():
-    return asyncio.get_event_loop_policy().get_event_loop()
+log = logging.getLogger()
 
 
 class FakeTime:
@@ -81,10 +80,13 @@ class MockedCallLater:
         async with hp.ensure_aexit(self):
             return await self.start()
 
-    def __init__(self, t, precision=0.1):
+    def __init__(self, t, loop, precision=0.1):
         self.t = t
-        self.loop = get_event_loop()
+        self.loop = loop
         self.precision = precision
+
+        tramp = hp.Tramp(log=log)
+        self.ctx = hp.CTX.beginning(name="::", tramp=tramp)
 
         self.task = None
         self.call_later_patch = None
@@ -92,10 +94,10 @@ class MockedCallLater:
 
         self.funcs = []
         self.called_times = []
-        self.have_call_later = self.hp.ResettableFuture()
+        self.have_call_later = asyncio.Event()
 
     async def start(self) -> Self:
-        self.task = self.hp.async_as_background(self._calls())
+        self.task = self.ctx.async_as_background(self._calls())
         self.original_call_later = self.loop.call_later
         self.call_later_patch = mock.patch.object(self.loop, "call_later", self._call_later)
         self.call_later_patch.start()
@@ -111,14 +113,14 @@ class MockedCallLater:
             self.call_later_patch.stop()
         if self.task:
             self.task.cancel()
-            await self.hp.wait_for_all_futures(self.task, name="MockedCallLater.exit")
+            await self.ctx.wait_for_all_futures(self.task)
 
     async def add(self, amount):
         await self._run(iterations=round(amount / 0.1))
 
     async def resume_after(self, amount):
         fut = self.hp.create_future()
-        get_event_loop().call_later(amount, fut.set_result, True)
+        self.loop.call_later(amount, fut.set_result, True)
         await fut
 
     @property
@@ -136,8 +138,7 @@ class MockedCallLater:
         if any(exc in called_from for exc in ("alt_pytest_asyncio/",)):
             return self.original_call_later(when, func, *args)
 
-        self.have_call_later.reset()
-        self.have_call_later.set_result(True)
+        self.have_call_later.set()
 
         info = {"cancelled": False}
 
@@ -157,21 +158,21 @@ class MockedCallLater:
 
     async def _allow_real_loop(self, until=0):
         while True:
-            ready = get_event_loop()._ready
+            ready = self.loop._ready
             ready_len = len(ready)
             await asyncio.sleep(0)
             if ready_len <= until:
                 return
 
     async def _calls(self):
-        await self.have_call_later
+        await self.have_call_later.wait()
 
         while True:
             await self._allow_real_loop()
-            await self.have_call_later
+            await self.have_call_later.wait()
             await self._run()
             if not self.funcs:
-                self.have_call_later.reset()
+                self.have_call_later.clear()
 
     async def _run(self, iterations=0):
         for iteration in range(iterations + 1):
@@ -207,7 +208,7 @@ class FutureDominoes:
     .. code-block:: python
 
         async def run():
-            async with FutureDominoes(expected=8) as futs:
+            async with FutureDominoes(loop=loop, expected=8) as futs:
                 called = []
 
                 async def one():
@@ -235,7 +236,7 @@ class FutureDominoes:
                     await futs[8]
                     called.append("final")
 
-                loop = get_event_loop()
+                loop = ...
                 loop.create_task(three())
                 loop.create_task(one())
 
@@ -271,21 +272,25 @@ class FutureDominoes:
         async with hp.ensure_aexit(self):
             return await self.start()
 
-    def __init__(self, *, before_next_domino=None, expected):
+    def __init__(self, *, loop, before_next_domino=None, expected):
         self.futs = {}
         self.retrieved = {}
+        self.loop = loop
 
         self.upto = 1
         self.expected = int(expected)
         self.before_next_domino = before_next_domino
-        self.finished = self.hp.ResettableFuture()
+        self.finished = self.loop.create_future()
+
+        tramp = hp.Tramp(log=log)
+        self.ctx = hp.CTX.beginning(name="::", tramp=tramp)
 
         for i in range(self.expected):
             self.make(i + 1)
 
     async def start(self) -> Self:
-        self._tick = self.hp.async_as_background(self.tick())
-        self._tick.add_done_callback(self.hp.transfer_result(self.finished))
+        self._tick = self.ctx.async_as_background(self.tick())
+        self._tick.add_done_callback(self.ctx.transfer_result(self.finished))
         return self
 
     async def finish(
@@ -297,7 +302,7 @@ class FutureDominoes:
         if hasattr(self, "_tick"):
             if exc and not self._tick.done():
                 self._tick.cancel()
-            await self.hp.wait_for_all_futures(self._tick)
+            await self.ctx.wait_for_all_futures(self._tick)
 
         if not exc:
             await self._tick
@@ -305,7 +310,7 @@ class FutureDominoes:
     async def tick(self):
         async with self.hp.tick(0, min_wait=0) as ticks:
             async for i, _ in ticks:
-                await self.hp.wait_for_all_futures(self.retrieved[i], self.futs[i])
+                await self.ctx.wait_for_all_futures(self.retrieved[i], self.futs[i])
                 print(f"Waited for Domino {i}")  # noqa: T201
 
                 self.upto = i
@@ -330,11 +335,11 @@ class FutureDominoes:
 
     async def _allow_real_loop(self):
         until = 0
-        if "mock" in str(get_event_loop().call_later).lower():
+        if "mock" in str(self.loop.call_later).lower():
             until = 1
 
         while True:
-            ready = get_event_loop()._ready
+            ready = self.loop._ready
             ready_len = len(ready)
             await asyncio.sleep(0)
             if ready_len <= until:
@@ -344,14 +349,12 @@ class FutureDominoes:
     def hp(self):
         return __import__("machinery").helpers
 
-    @property
-    def loop(self):
-        return get_event_loop()
-
     def make(self, num):
         if num > self.expected or self.finished.done():
             exc = Exception(f"Only expected up to {self.expected} dominoes")
-            self.finished.reset()
+            if not self.finished.done():
+                self.finished.set_exception(exc)
+            self.finished = self.loop.create_future()
             self.finished.set_exception(exc)
             raise exc
 

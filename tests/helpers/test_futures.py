@@ -2,122 +2,10 @@ import asyncio
 import dataclasses
 import types
 from collections.abc import Sequence
-from unittest import mock
 
 import pytest
 
 from machinery import helpers as hp
-from machinery import test_helpers as thp
-
-
-class TestCreatingAFuture:
-    def test_can_create_a_future_from_a_provided_loop(self):
-        fut = mock.Mock(name="future")
-        loop = mock.Mock(name="loop")
-        loop.create_future.return_value = fut
-        assert hp.create_future(loop=loop) is fut
-        assert fut.name is None
-        loop.create_future.assert_called_once_with()
-
-    def test_can_create_a_future_from_current_loop(self):
-        fut = hp.create_future()
-        assert isinstance(fut, asyncio.Future)
-        assert fut.name is None
-
-    def test_can_give_a_name_to_the_future(self):
-        fut = hp.create_future(name="hi")
-        assert fut.name == "hi"
-
-
-class TestFutHasCallback:
-    async def test_says_no_if_fut_has_no_callbacks(self, loop: asyncio.AbstractEventLoop) -> None:
-        def func(res: hp.protocols.FutureStatus[None]) -> None:
-            return None
-
-        fut: asyncio.Future[None] = loop.create_future()
-        assert not hp.fut_has_callback(fut, func)
-
-    async def test_says_no_if_it_has_other_callbacks(
-        self, loop: asyncio.AbstractEventLoop
-    ) -> None:
-        def func1(res: hp.protocols.FutureStatus[None]) -> None:
-            return None
-
-        def func2(res: hp.protocols.FutureStatus[None]) -> None:
-            return None
-
-        fut: asyncio.Future[None] = loop.create_future()
-        fut.add_done_callback(func1)
-        assert not hp.fut_has_callback(fut, func2)
-
-    async def test_says_yes_if_we_have_the_callback(self, loop: asyncio.AbstractEventLoop):
-        def func1(res: hp.protocols.FutureStatus[None]) -> None:
-            return None
-
-        fut: asyncio.Future[None] = loop.create_future()
-        fut.add_done_callback(func1)
-        assert hp.fut_has_callback(fut, func1)
-
-        def func2(res: hp.protocols.FutureStatus[None]) -> None:
-            return None
-
-        assert not hp.fut_has_callback(fut, func2)
-        fut.add_done_callback(func2)
-        assert hp.fut_has_callback(fut, func2)
-
-
-class TestAsyncAsBackground:
-    async def test_runs_the_coroutine_in_the_background(self):
-        async def func(one, two, three=None):
-            return f"{one}.{two}.{three}"
-
-        t = hp.async_as_background(func(6, 5, three=9))
-        thp.assertFutCallbacks(t, hp.reporter)
-        assert isinstance(t, asyncio.Task)
-        assert await t == "6.5.9"
-
-    async def test_uses_silent_reporter_if_silent_is_True(self):
-        async def func(one, two, three=None):
-            return f"{one}.{two}.{three}"
-
-        t = hp.async_as_background(func(6, 5, three=9), silent=True)
-        thp.assertFutCallbacks(t, hp.silent_reporter)
-        assert isinstance(t, asyncio.Task)
-        assert await t == "6.5.9"
-
-
-class TestSilentReporter:
-    async def test_does_nothing_if_the_future_was_cancelled(self):
-        fut = hp.create_future()
-        fut.cancel()
-        assert hp.silent_reporter(fut) is None
-
-    async def test_does_nothing_if_the_future_has_an_exception(self):
-        fut = hp.create_future()
-        fut.set_exception(Exception("wat"))
-        assert hp.silent_reporter(fut) is None
-
-    async def test_returns_true_if_we_have_a_result(self):
-        fut = hp.create_future()
-        fut.set_result(mock.Mock(name="result"))
-        assert hp.silent_reporter(fut) is True
-
-
-class TestReporter:
-    async def test_does_nothing_if_the_future_was_cancelled(self):
-        fut = hp.create_future()
-        fut.cancel()
-        assert hp.reporter(fut) is None
-
-    async def test_does_nothing_if_the_future_has_an_exception(self):
-        fut = hp.create_future()
-        fut.set_exception(Exception("wat"))
-        assert hp.reporter(fut) is None
-
-    async def test_returns_true_if_we_have_a_result(self):
-        fut = hp.create_future()
-        fut.set_result(mock.Mock(name="result"))
-        assert hp.reporter(fut) is True
 
 
 class TestTransferResult:
@@ -159,8 +47,8 @@ class TestTransferResult:
         async def test_cancels_fut_if_res_is_cancelled(
             self, loop: asyncio.AbstractEventLoop
         ) -> None:
-            fut = hp.create_future()
-            res = hp.create_future()
+            fut = loop.create_future()
+            res = loop.create_future()
             res.cancel()
 
             hp.transfer_result(fut, errors_only=True)(res)
@@ -190,8 +78,8 @@ class TestTransferResult:
         async def test_cancels_fut_if_res_is_cancelled(
             self, loop: asyncio.AbstractEventLoop
         ) -> None:
-            fut = hp.create_future()
-            res = hp.create_future()
+            fut = loop.create_future()
+            res = loop.create_future()
             res.cancel()
 
             hp.transfer_result(fut, errors_only=False)(res)
@@ -482,113 +370,6 @@ class TestFindAndApplyResult:
         for f in test_logic.available_futs:
             assert not f.done()
         assert not test_logic.final_fut.done()
-
-
-class TestWaitingForAllFutures:
-    async def test_does_nothing_if_there_are_no_futures(self):
-        await hp.wait_for_all_futures()
-
-    async def test_waits_for_all_the_futures_to_be_complete_regardless_of_status(self):
-        """Deliberately don't wait on futures to ensure we don't get warnings if they aren't awaited"""
-        fut1 = hp.create_future()
-        fut2 = hp.create_future()
-        fut3 = hp.create_future()
-        fut4 = hp.create_future()
-
-        w = hp.async_as_background(hp.wait_for_all_futures(fut1, fut2, fut3, fut3, fut4))
-        await asyncio.sleep(0.01)
-        assert not w.done()
-
-        fut1.set_result(True)
-        await asyncio.sleep(0.01)
-        assert not w.done()
-
-        fut2.set_exception(Exception("yo"))
-        await asyncio.sleep(0.01)
-        assert not w.done()
-
-        fut3.cancel()
-        await asyncio.sleep(0.01)
-        assert not w.done()
-
-        fut4.set_result(False)
-
-        await asyncio.sleep(0.01)
-        assert w.done()
-        await w
-
-        assert not any(f._callbacks for f in (fut1, fut2, fut3, fut4))
-
-
-class TestWaitingForFirstFuture:
-    async def test_does_nothing_if_there_are_no_futures(self):
-        await hp.wait_for_first_future()
-
-    async def test_returns_if_any_of_the_futures_are_already_done(self):
-        fut1 = hp.create_future()
-        fut2 = hp.create_future()
-        fut3 = hp.create_future()
-
-        fut2.set_result(True)
-        await hp.wait_for_first_future(fut1, fut2, fut3)
-        assert not fut2._callbacks
-        assert all(len(f._callbacks) == 1 for f in (fut1, fut3))
-
-    async def test_returns_on_the_first_future_to_have_a_result(self):
-        fut1 = hp.create_future()
-        fut2 = hp.create_future()
-        fut3 = hp.create_future()
-
-        w = hp.async_as_background(hp.wait_for_first_future(fut1, fut2, fut3))
-        await asyncio.sleep(0.01)
-        assert not w.done()
-
-        fut2.set_result(True)
-        await fut2
-        await asyncio.sleep(0.01)
-        assert w.done()
-
-        await w
-        assert not fut2._callbacks
-        assert all(len(f._callbacks) == 1 for f in (fut1, fut3))
-
-    async def test_returns_on_the_first_future_to_have_an_exception(self):
-        fut1 = hp.create_future()
-        fut2 = hp.create_future()
-        fut3 = hp.create_future()
-
-        w = hp.async_as_background(hp.wait_for_first_future(fut1, fut2, fut3))
-        await asyncio.sleep(0.01)
-        assert not w.done()
-
-        fut3.set_exception(ValueError("NOPE"))
-        with pytest.raises(ValueError, match="NOPE"):
-            await fut3
-        await asyncio.sleep(0.01)
-        assert w.done()
-
-        await w
-        assert not fut3._callbacks
-        assert all(len(f._callbacks) == 1 for f in (fut1, fut2))
-
-    async def test_returns_on_the_first_future_to_be_cancelled(self):
-        fut1 = hp.create_future()
-        fut2 = hp.create_future()
-        fut3 = hp.create_future()
-
-        w = hp.async_as_background(hp.wait_for_first_future(fut1, fut2, fut3))
-        await asyncio.sleep(0.01)
-        assert not w.done()
-
-        fut1.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await fut1
-        await asyncio.sleep(0.01)
-        assert w.done()
-
-        await w
-        assert not fut1._callbacks
-        assert all(len(f._callbacks) == 1 for f in (fut2, fut3))
 
 
 class TestEnsuringAexit:

@@ -1041,9 +1041,9 @@ class TestCTX:
 
         @pytest.fixture
         async def fake_mocked_later(
-            self, fake_time: thp.FakeTime
+            self, fake_time: thp.FakeTime, loop: asyncio.AbstractEventLoop
         ) -> AsyncGenerator[thp.MockedCallLater]:
-            async with thp.MockedCallLater(fake_time) as m:
+            async with thp.MockedCallLater(fake_time, loop=loop) as m:
                 yield m
 
         async def test_it_raises_cancelled_error_by_default_if_time_runs_out(

@@ -1,20 +1,10 @@
 import asyncio
-import logging
 from collections.abc import AsyncGenerator, Callable, Sequence
-from typing import Protocol, TypeVar
 
 from . import _protocols
 
-T_Send = TypeVar("T_Send")
 
-log = logging.getLogger("machinery.helpers")
-
-
-class _WithRepr(Protocol):
-    def __repr__(self) -> str: ...
-
-
-async def stop_async_generator(
+async def stop_async_generator[T_Send](
     gen: AsyncGenerator[object, T_Send | None],
     provide: T_Send | None = None,
     name: str | None = None,
@@ -32,135 +22,6 @@ async def stop_async_generator(
             pass
     finally:
         await gen.aclose()
-
-
-def fut_to_string(f: asyncio.Future[object] | _WithRepr, with_name: bool = True) -> str:
-    if not isinstance(f, asyncio.Future):
-        s = repr(f)
-    else:
-        s = ""
-        if with_name:
-            s = f"<Future#{getattr(f, 'name', None)}"
-        if not f.done():
-            s = f"{s}(pending)"
-        elif f.cancelled():
-            s = f"{s}(cancelled)"
-        else:
-            exc = f.exception()
-            if exc:
-                s = f"{s}(exception:{type(exc).__name__}:{exc})"
-            else:
-                s = f"{s}(result)"
-        if with_name:
-            s = f"{s}>"
-    return s
-
-
-def silent_reporter(res):
-    """
-    A generic reporter for asyncio tasks that doesn't log errors.
-
-    For example:
-
-    .. code-block:: python
-
-        t = loop.create_task(coroutine())
-        t.add_done_callback(hp.silent_reporter)
-
-    This means that exceptions are **not** logged to the terminal and you won't
-    get warnings about tasks not being looked at when they finish.
-
-    This method will return ``True`` if there was no exception and ``None``
-    otherwise.
-
-    It also handles and silences ``asyncio.CancelledError``.
-    """
-    if not res.cancelled():
-        exc = res.exception()
-        if not exc:
-            res.result()
-            return True
-
-
-def reporter(res):
-    """
-    A generic reporter for asyncio tasks.
-
-    For example:
-
-    .. code-block:: python
-
-        t = loop.create_task(coroutine())
-        t.add_done_callback(hp.reporter)
-
-    This means that exceptions are logged to the terminal and you won't
-    get warnings about tasks not being looked at when they finish.
-
-    This method will return ``True`` if there was no exception and ``None``
-    otherwise.
-
-    It also handles and silences ``asyncio.CancelledError``.
-    """
-    if not res.cancelled():
-        exc = res.exception()
-        if exc:
-            if not isinstance(exc, KeyboardInterrupt):
-                log.exception(exc, exc_info=(type(exc), exc, exc.__traceback__))
-        else:
-            res.result()
-            return True
-
-
-def get_event_loop():
-    return asyncio.get_event_loop_policy().get_event_loop()
-
-
-def create_future(*, name=None, loop=None):
-    if loop is None:
-        loop = get_event_loop()
-    future = loop.create_future()
-    future.name = name
-    future.add_done_callback(silent_reporter)
-    return future
-
-
-def fut_has_callback[T_Ret](
-    fut: asyncio.Future[T_Ret], callback: _protocols.FutureCallback[T_Ret]
-) -> bool:
-    """
-    Look at the callbacks on the future and return ``True`` if any of them
-    are the provided ``callback``.
-    """
-    if not fut._callbacks:
-        return False
-    return any(cb == callback for cb, _ in fut._callbacks)
-
-
-def async_as_background(coroutine, silent=False):
-    """
-    Create a task with :func:`reporter` as a done callback and return the created
-    task. If ``silent=True`` then use :func:`silent_reporter`.
-
-    This is useful because if a task exits with an exception, but nothing ever
-    retrieves that exception then Python will print annoying warnings about this.
-
-    .. code-block:: python
-
-        from machinery import helpers as hp
-
-
-        async def my_func():
-            await something()
-
-        # Kick off the function in the background
-        hp.async_as_background(my_func())
-    """
-    t = get_event_loop().create_task(coroutine)
-    if silent:
-        t.add_done_callback(silent_reporter)
-    else:
-        t.add_done_callback(reporter)
-    return t
 
 
 def transfer_result[T_Res](

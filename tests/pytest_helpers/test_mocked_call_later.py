@@ -1,85 +1,87 @@
+import asyncio
 import time
 
-from machinery import helpers as hp
+import pytest
+
 from machinery import test_helpers as thp
 
 
-def call_later(*args):
-    return hp.get_event_loop().call_later(*args)
+@pytest.fixture()
+def loop() -> asyncio.AbstractEventLoop:
+    return asyncio.get_event_loop_policy().get_event_loop()
 
 
 class TestMockedCalledLater:
-    async def test_works(self):
+    async def test_works(self, loop: asyncio.AbstractEventLoop):
         with thp.FakeTime() as t:
-            async with thp.MockedCallLater(t):
-                waiter = hp.create_future()
-                call_later(5, waiter.set_result, True)
-                assert await waiter is True
+            async with thp.MockedCallLater(t, loop=loop):
+                waiter = asyncio.Event()
+                loop.call_later(5, waiter.set)
+                await waiter.wait()
                 assert time.time() == 5
 
-    async def test_does_the_calls_in_order(self):
+    async def test_does_the_calls_in_order(self, loop: asyncio.AbstractEventLoop):
         with thp.FakeTime() as t:
-            async with thp.MockedCallLater(t):
+            async with thp.MockedCallLater(t, loop=loop):
                 assert time.time() == 0
 
                 called = []
-                waiter = hp.create_future()
+                waiter = asyncio.Event()
 
                 def c(v):
                     called.append((time.time(), v))
                     if len(called) == 4:
-                        waiter.set_result(True)
+                        waiter.set()
 
-                call_later(2, c, "2")
-                call_later(1, c, "1")
-                call_later(5, c, "5")
-                call_later(0.3, c, "0.3")
+                loop.call_later(2, c, "2")
+                loop.call_later(1, c, "1")
+                loop.call_later(5, c, "5")
+                loop.call_later(0.3, c, "0.3")
 
-                assert await waiter is True
+                await waiter.wait()
 
                 assert called == [(0.3, "0.3"), (1, "1"), (2, "2"), (5, "5")]
 
-    async def test_can_cancel_handles(self):
+    async def test_can_cancel_handles(self, loop: asyncio.AbstractEventLoop):
         with thp.FakeTime() as t:
-            async with thp.MockedCallLater(t) as m:
+            async with thp.MockedCallLater(t, loop=loop) as m:
                 info = {"handle": None}
 
                 def nxt(*args):
                     if info["handle"]:
                         info["handle"].cancel()
 
-                    info["handle"] = call_later(*args)
+                    info["handle"] = loop.call_later(*args)
 
-                waiter = hp.ResettableFuture()
-                nxt(1, waiter.set_result, True)
-                nxt(0.3, waiter.set_result, True)
+                waiter = asyncio.Event()
+                nxt(1, waiter.set)
+                nxt(0.3, waiter.set)
 
-                assert await waiter is True
-                waiter.reset()
+                await waiter.wait()
+                waiter.clear()
                 assert time.time() == 0.3
 
                 await m.add(1)
                 assert time.time() == 1.3
-                assert waiter.done()
-                waiter.reset()
+                await waiter.wait()
+                waiter.clear()
 
-                nxt(2, waiter.set_result, True)
+                nxt(2, waiter.set)
                 await m.add(1.5)
                 assert time.time() == 2.8
 
-                nxt(1.5, waiter.set_result, True)
+                nxt(1.5, waiter.set)
                 await m.add(0.6)
                 assert time.time() == 3.4
-                assert not waiter.done()
+                assert not waiter.is_set()
 
-                assert await waiter is True
+                await waiter.wait()
                 assert time.time() == 2.8 + 1.5
                 assert time.time() == 0.3 + 1 + 1.5 + 1.5
 
-                waiter.reset()
-                nxt(0.3, waiter.set_result, True)
+                waiter.clear()
+                nxt(0.3, waiter.set)
                 await m.add(0.4)
-                assert waiter.done()
-                assert await waiter is True
+                await waiter.wait()
 
                 assert time.time() == 0.3 + 1 + 1.5 + 1.5 + 0.4

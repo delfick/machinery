@@ -1,11 +1,12 @@
+import asyncio
 import collections
 import queue as stdqueue
 import types
 
-from . import _future_waiters, _future_wrappers
+from . import _context, _protocols
 
 
-class SyncQueue:
+class SyncQueue[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     """
     A simple wrapper around the standard library non async queue.
 
@@ -27,13 +28,13 @@ class SyncQueue:
         queue.append(another)
     """
 
-    def __init__(self, final_future, *, timeout=0.05, empty_on_finished=False, name=None):
+    def __init__(
+        self, *, ctx: _context.CTX[T_Tramp], timeout=0.05, empty_on_finished=False, name=None
+    ):
         self.name = name
         self.timeout = timeout
-        self.collection = stdqueue.Queue()
-        self.final_future = _future_wrappers.ChildOfFuture(
-            final_future, name=f"SyncQueue({self.name})::__init__[final_future]"
-        )
+        self.collection: stdqueue.Queue = stdqueue.Queue()
+        self.ctx = ctx.child(name=f"SyncQueue({self.name})::__init__[ctx]")
         self.empty_on_finished = empty_on_finished
 
     def append(self, item):
@@ -45,14 +46,14 @@ class SyncQueue:
         exc: BaseException | None = None,
         tb: types.TracebackType | None = None,
     ) -> None:
-        self.final_future.cancel()
+        self.ctx.cancel()
 
     def __iter__(self):
         return iter(self.get_all())
 
     def get_all(self):
         while True:
-            if self.final_future.done():
+            if self.ctx.done():
                 break
 
             try:
@@ -60,12 +61,12 @@ class SyncQueue:
             except stdqueue.Empty:
                 continue
             else:
-                if self.final_future.done():
+                if self.ctx.done():
                     break
 
                 yield nxt
 
-        if self.final_future.done() and self.empty_on_finished:
+        if self.ctx.done() and self.empty_on_finished:
             for nxt in self.remaining():
                 yield nxt
 
@@ -77,7 +78,7 @@ class SyncQueue:
                 break
 
 
-class Queue:
+class Queue[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     """
     A custom async queue class.
 
@@ -87,11 +88,11 @@ class Queue:
 
         from machinery import helpers as hp
 
-        final_future = hp.create_future()
-        queue = hp.Queue(final_future)
+        ctx: hp.CTX = ...
+        queue = hp.Queue(ctx=ctx)
 
         async def results():
-            # This will continue forever until final_future is done
+            # This will continue forever until ctx is done
             async for result in queue:
                 print(result)
 
@@ -107,23 +108,18 @@ class Queue:
     class Done:
         pass
 
-    def __init__(self, final_future, *, empty_on_finished=False, name=None):
+    def __init__(self, *, ctx: _context.CTX[T_Tramp], empty_on_finished=False, name=None):
         self.name = name
-        self.waiter = _future_wrappers.ResettableFuture(
-            name=f"Queue({self.name})::__init__[waiter]"
-        )
-        self.collection = collections.deque()
-        self.final_future = _future_wrappers.ChildOfFuture(
-            final_future, name=f"Queue({self.name})::__init__[final_future]"
-        )
+        self.collection: collections.deque = collections.deque()
+        self.ctx = ctx.child(name=f"Queue({self.name})::__init__[ctx]")
+        self.waiter = asyncio.Event()
         self.empty_on_finished = empty_on_finished
 
         self.stop = False
-        self.final_future.add_done_callback(self._stop_waiter)
+        self.ctx.add_done_callback(self._stop_waiter)
 
     def _stop_waiter(self, res):
-        self.waiter.reset()
-        self.waiter.set_result(True)
+        self.waiter.set()
 
     async def finish(
         self,
@@ -131,31 +127,28 @@ class Queue:
         exc: BaseException | None = None,
         tb: types.TracebackType | None = None,
     ) -> None:
-        self.final_future.cancel()
+        self.ctx.cancel()
 
     def append(self, item):
         self.collection.append(item)
-        if not self.waiter.done():
-            self.waiter.set_result(True)
+        self.waiter.set()
 
     def __aiter__(self):
         return self.get_all()
 
     async def get_all(self):
         if not self.collection:
-            self.waiter.reset()
+            self.waiter.clear()
 
         while True:
-            await _future_waiters.wait_for_first_future(
-                self.final_future,
-                self.waiter,
-                name=f"Queue({self.name})::_get_and_wait[wait_for_next_value]",
+            await self.ctx.wait_for_first_future(
+                self.ctx, self.ctx.fut_from_event(self.waiter, name="get_all")
             )
 
-            if self.final_future.done() and not self.empty_on_finished:
+            if self.ctx.done() and not self.empty_on_finished:
                 break
 
-            if self.final_future.done() and not self.collection:
+            if self.ctx.done() and not self.collection:
                 break
 
             if not self.collection:
@@ -166,7 +159,7 @@ class Queue:
                 break
 
             if not self.collection:
-                self.waiter.reset()
+                self.waiter.clear()
 
             yield nxt
 

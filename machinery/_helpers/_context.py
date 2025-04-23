@@ -259,10 +259,12 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
         unique = list({id(fut): fut for fut in futs}.values())
 
-        if any(fut.done() for fut in unique):
-            return
-
         waiter = asyncio.Event()
+
+        if any(fut.done() for fut in unique):
+            asyncio.get_running_loop().call_soon(waiter.set)
+            await waiter.wait()
+            return
 
         def done(res: object) -> None:
             waiter.set()
@@ -288,10 +290,12 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
         unique = list({id(fut): fut for fut in futs}.values())
 
-        if all(fut.done() for fut in unique):
-            return
-
         waiter = asyncio.Event()
+
+        if all(fut.done() for fut in unique):
+            asyncio.get_running_loop().call_soon(waiter.set)
+            await waiter.wait()
+            return
 
         complete: dict[int, bool] = {}
 
@@ -360,6 +364,21 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
             return await result
         finally:
             handle.cancel()
+
+    def fut_from_event(self, event: asyncio.Event, *, name: str) -> asyncio.Future[None]:
+        fut: asyncio.Future[None] = self.loop.create_future()
+        self.tramp.set_future_name(fut, name=f"FUT_FROM_EVENT{{{name}}}")
+
+        async def wait() -> None:
+            await event.wait()
+
+        def on_done(res: asyncio.Future[None]) -> None:
+            if not fut.done():
+                fut.set_result(None)
+
+        task = self.async_as_background(wait())
+        task.add_done_callback(on_done)
+        return fut
 
     def async_as_background[T_Ret](
         self, coro: Coroutine[object, object, T_Ret], *, silent: bool = True

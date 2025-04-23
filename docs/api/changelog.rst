@@ -14,6 +14,7 @@ Changelog
     * Removed a number of other helpers that are too random for this library
     * Removing ``hp.ResultStreamer`` to be replaced with ``hp.QueueFeeder``
     * Renamed ``hp.ATicker`` to ``hp.Ticker``
+    * Everything is now in terms of ``ctx: hp.CTX`` rather than ``final_future``
     * Machinery is now Python3.13+
 
 .. _release-0.1.1:

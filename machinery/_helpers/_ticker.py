@@ -4,10 +4,16 @@ import types
 from collections.abc import AsyncGenerator
 from typing import Self
 
-from . import _async_mixin, _future_waiters, _future_wrappers, _futures, _task_holder
+from . import (
+    _async_mixin,
+    _context,
+    _futures,
+    _protocols,
+    _task_holder,
+)
 
 
-class Ticker:
+class Ticker[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     """
     This object gives you an async generator that yields every ``every``
     seconds, taking into account how long it takes for your code to finish
@@ -65,7 +71,7 @@ class Ticker:
 
     There are three other options:
 
-    final_future
+    ctx
         If this future is completed then the iteration will stop
 
     max_iterations
@@ -105,7 +111,7 @@ class Ticker:
         self,
         every: int,
         *,
-        final_future: asyncio.Future[object] | None = None,
+        ctx: _context.CTX[T_Tramp],
         max_iterations: int | None = None,
         max_time: int | None = None,
         min_wait: float = 0.1,
@@ -127,14 +133,8 @@ class Ticker:
         self.handle: asyncio.Handle | None = None
         self.expected: float | None = None
 
-        self.waiter = _future_wrappers.ResettableFuture(
-            name=f"Ticker({self.name})::__init__[waiter]"
-        )
-        self.final_future = _future_wrappers.ChildOfFuture(
-            final_future
-            or _futures.create_future(name=f"Ticker({self.name})::__init__[owned_final_future]"),
-            name=f"Ticker({self.name})::__init__[final_future]",
-        )
+        self.ctx = ctx.child(name=f"Ticker({self.name})::__init__[ctx]")
+        self.waiter = asyncio.Event()
 
     async def start(self) -> Self:
         self.gen = self.tick()
@@ -161,20 +161,18 @@ class Ticker:
             except self.Stop:
                 pass
 
-        self.final_future.cancel()
+        self.ctx.cancel()
 
     async def tick(self) -> AsyncGenerator[tuple[int, float]]:
         final_handle = None
         if self.max_time:
-            final_handle = _futures.get_event_loop().call_later(
-                self.max_time, self.final_future.cancel
-            )
+            final_handle = self.ctx.loop.call_later(self.max_time, self.ctx.cancel)
 
         try:
             async for info in self._tick():
                 yield info
         finally:
-            self.final_future.cancel()
+            self.ctx.cancel()
             if final_handle:
                 final_handle.cancel()
             self._change_handle()
@@ -197,10 +195,9 @@ class Ticker:
         self._change_handle()
 
         if diff <= 0:
-            self.waiter.reset()
-            self.waiter.set_result(True)
+            self.waiter.set()
         else:
-            self._change_handle(_futures.get_event_loop().call_later(diff, self._waited))
+            self._change_handle(self.ctx.loop.call_later(diff, self._waited))
 
     def _change_handle(self, handle: asyncio.Handle | None = None) -> None:
         if self.handle:
@@ -208,30 +205,24 @@ class Ticker:
         self.handle = handle
 
     def _waited(self) -> None:
-        self.waiter.reset()
-        self.waiter.set_result(True)
+        self.waiter.set()
 
     async def _wait_for_next(self) -> None:
         pauser = self.pauser
 
         if pauser is None or not pauser.locked():
-            return await _future_waiters.wait_for_first_future(
-                self.final_future,
-                self.waiter,
-                name=f"Ticker({self.name})::_wait_for_next[without_pause]",
+            return await self.ctx.wait_for_first_future(
+                self.ctx, self.ctx.fut_from_event(self.waiter, name="wait_for_next")
             )
 
         async def pause() -> None:
             async with pauser:
                 pass
 
-        ts_final_future = _future_wrappers.ChildOfFuture(
-            self.final_future, name=f"Ticker({self.name})::_wait_for_next[with_pause]"
-        )
-
-        async with _task_holder.TaskHolder(ts_final_future) as ts:
-            ts.add(pause())
-            ts.add_task(self.waiter)
+        with self.ctx.child(name=f"Ticker({self.name})::_wait_for_next[with_pause]") as ts_ctx:
+            async with _task_holder.TaskHolder(ctx=ts_ctx) as ts:
+                ts.add(pause())
+                ts.add(self.waiter.wait())
 
     async def _tick(self) -> AsyncGenerator[tuple[int, float]]:
         start = time.time()
@@ -243,8 +234,8 @@ class Ticker:
         while True:
             await self._wait_for_next()
 
-            self.waiter.reset()
-            if self.final_future.done():
+            self.waiter.clear()
+            if self.ctx.done():
                 return
 
             if self.max_iterations is not None and iteration >= self.max_iterations:
@@ -276,23 +267,23 @@ class Ticker:
             if diff == 0:
                 diff = self.expected - now
 
-            self._change_handle(_futures.get_event_loop().call_later(diff, self._waited))
+            self._change_handle(self.ctx.loop.call_later(diff, self._waited))
 
             if self.min_wait is not False or diff > 0:
                 iteration += 1
                 yield iteration, max([diff, 0])
 
 
-def tick(
+def tick[T_Tramp: _protocols.Tramp = _protocols.Tramp](
     every: int,
     *,
-    final_future: asyncio.Future[object] | None = None,
+    ctx: _context.CTX[T_Tramp],
     max_iterations: int | None = None,
     max_time: int | None = None,
     min_wait: float = 0.1,
     name: str | None = None,
     pauser: asyncio.Semaphore | None = None,
-) -> Ticker:
+) -> Ticker[T_Tramp]:
     """
     .. code-block:: python
 
@@ -313,7 +304,7 @@ def tick(
     """
     return Ticker(
         every,
-        final_future=final_future,
+        ctx=ctx,
         max_iterations=max_iterations,
         max_time=max_time,
         min_wait=min_wait,
