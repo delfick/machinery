@@ -9,7 +9,6 @@ from . import (
     _future_waiters,
     _future_wrappers,
     _futures,
-    _other,
     _queue,
     _task_holder,
 )
@@ -277,7 +276,7 @@ class ResultStreamer:
                 if not successful:
                     v = value if self.exceptions_only_to_error_catcher else result
                     if not isinstance(v, asyncio.CancelledError):
-                        _other.add_error(self.error_catcher, v)
+                        self._add_error(self.error_catcher, v)
 
                 self.queue.append(result)
 
@@ -325,3 +324,17 @@ class ResultStreamer:
             if not self._registered:
                 self.queue_future.cancel()
                 await self.queue.finish()
+
+    def _add_error(self, catcher, error):
+        """
+        Adds an error to an error_catcher.
+
+        This means if it's callable we call it with the error and if it's a ``list``
+        or ``set`` we add the error to it.
+        """
+        if callable(catcher):
+            catcher(error)
+        elif type(catcher) is list:
+            catcher.append(error)
+        elif type(catcher) is set:
+            catcher.add(error)

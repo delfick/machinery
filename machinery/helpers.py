@@ -26,8 +26,6 @@ transfer_result = _helpers.futures.transfer_result
 noncancelled_results_from_futs = _helpers.futures.noncancelled_results_from_futs
 find_and_apply_result = _helpers.futures.find_and_apply_result
 
-add_error = _helpers.other.add_error
-
 TaskHolder = _helpers.task_holder.TaskHolder
 
 ResultStreamer = _helpers.result_streamer.ResultStreamer

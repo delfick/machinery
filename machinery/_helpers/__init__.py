@@ -4,7 +4,6 @@ from . import _future_waiters as future_waiters
 from . import _future_wrappers as future_wrappers
 from . import _futures as futures
 from . import _memoized_property as memoized_property
-from . import _other as other
 from . import _protocols as protocols
 from . import _queue as queue
 from . import _result_streamer as result_streamer
@@ -18,7 +17,6 @@ __all__ = [
     "future_wrappers",
     "futures",
     "memoized_property",
-    "other",
     "protocols",
     "queue",
     "result_streamer",
