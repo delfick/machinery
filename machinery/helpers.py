@@ -27,7 +27,7 @@ find_and_apply_result = _helpers.futures.find_and_apply_result
 
 TaskHolder = _helpers.task_holder.TaskHolder
 
-ATicker = _helpers.ticker.ATicker
+Ticker = _helpers.ticker.Ticker
 tick = _helpers.ticker.tick
 
 Queue = _helpers.queue.Queue

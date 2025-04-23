@@ -151,13 +151,13 @@ class TestTick:
         assert m.called_times == [3, 6, 9, 12]
 
 
-class TestATicker:
+class TestTicker:
     async def test_can_change_the_after_permanently(self) -> None:
         called = []
 
         with thp.FakeTime() as t:
             async with thp.MockedCallLater(t) as m:
-                async with hp.ATicker(3) as ticks:
+                async with hp.Ticker(3) as ticks:
                     async for i, nxt in ticks:
                         called.append((i, nxt, time.time()))
 
@@ -192,7 +192,7 @@ class TestATicker:
 
         with thp.FakeTime() as t:
             async with thp.MockedCallLater(t) as m:
-                async with hp.ATicker(3) as ticks:
+                async with hp.Ticker(3) as ticks:
                     async for i, nxt in ticks:
                         called.append((i, nxt, time.time()))
 
@@ -210,7 +210,7 @@ class TestATicker:
 
         with thp.FakeTime() as t:
             async with thp.MockedCallLater(t) as m:
-                async with hp.ATicker(5, min_wait=2) as ticks:
+                async with hp.Ticker(5, min_wait=2) as ticks:
                     async for i, nxt in ticks:
                         called.append((i, nxt, time.time()))
 
@@ -228,7 +228,7 @@ class TestATicker:
 
         with thp.FakeTime() as t:
             async with thp.MockedCallLater(t) as m:
-                async with hp.ATicker(5, min_wait=False) as ticks:
+                async with hp.Ticker(5, min_wait=False) as ticks:
                     async for i, nxt in ticks:
                         called.append((i, nxt, time.time()))
 
@@ -259,7 +259,7 @@ class TestATicker:
 
             with thp.FakeTime() as t:
                 async with thp.MockedCallLater(t) as m:
-                    async with hp.ATicker(5, min_wait=False, pauser=pauser) as ticks:
+                    async with hp.Ticker(5, min_wait=False, pauser=pauser) as ticks:
                         async for i, nxt in ticks:
                             called.append((i, nxt, time.time()))
 
@@ -287,7 +287,7 @@ class TestATicker:
 
             with thp.FakeTime() as t:
                 async with thp.MockedCallLater(t) as m:
-                    async with hp.ATicker(5, min_wait=False, pauser=pauser) as ticks:
+                    async with hp.Ticker(5, min_wait=False, pauser=pauser) as ticks:
                         async for i, nxt in ticks:
                             called.append((i, nxt, time.time()))
 

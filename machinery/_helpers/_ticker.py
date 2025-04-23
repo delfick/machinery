@@ -7,7 +7,7 @@ from typing import Self
 from . import _async_mixin, _future_waiters, _future_wrappers, _futures, _task_holder
 
 
-class ATicker:
+class Ticker:
     """
     This object gives you an async generator that yields every ``every``
     seconds, taking into account how long it takes for your code to finish
@@ -25,7 +25,7 @@ class ATicker:
         start = time.time()
         timing = []
 
-        async for _ in hp.ATicker(10):
+        async for _ in hp.Ticker(10):
             timing.append(time.time() - start)
             asyncio.sleep(8)
             if len(timing) >= 5:
@@ -47,7 +47,7 @@ class ATicker:
         from machinery import helpers as hp
 
 
-        ticker = hp.ATicker(10)
+        ticker = hp.Ticker(10)
 
         done = 0
 
@@ -128,12 +128,12 @@ class ATicker:
         self.expected: float | None = None
 
         self.waiter = _future_wrappers.ResettableFuture(
-            name=f"ATicker({self.name})::__init__[waiter]"
+            name=f"Ticker({self.name})::__init__[waiter]"
         )
         self.final_future = _future_wrappers.ChildOfFuture(
             final_future
-            or _futures.create_future(name=f"ATicker({self.name})::__init__[owned_final_future]"),
-            name=f"ATicker({self.name})::__init__[final_future]",
+            or _futures.create_future(name=f"Ticker({self.name})::__init__[owned_final_future]"),
+            name=f"Ticker({self.name})::__init__[final_future]",
         )
 
     async def start(self) -> Self:
@@ -156,7 +156,7 @@ class ATicker:
         if hasattr(self, "gen"):
             try:
                 await _futures.stop_async_generator(
-                    self.gen, exc=exc or self.Stop(), name=f"ATicker({self.name})::stop[stop_gen]"
+                    self.gen, exc=exc or self.Stop(), name=f"Ticker({self.name})::stop[stop_gen]"
                 )
             except self.Stop:
                 pass
@@ -218,7 +218,7 @@ class ATicker:
             return await _future_waiters.wait_for_first_future(
                 self.final_future,
                 self.waiter,
-                name=f"ATicker({self.name})::_wait_for_next[without_pause]",
+                name=f"Ticker({self.name})::_wait_for_next[without_pause]",
             )
 
         async def pause() -> None:
@@ -226,7 +226,7 @@ class ATicker:
                 pass
 
         ts_final_future = _future_wrappers.ChildOfFuture(
-            self.final_future, name=f"ATicker({self.name})::_wait_for_next[with_pause]"
+            self.final_future, name=f"Ticker({self.name})::_wait_for_next[with_pause]"
         )
 
         async with _task_holder.TaskHolder(ts_final_future) as ts:
@@ -292,7 +292,7 @@ def tick(
     min_wait: float = 0.1,
     name: str | None = None,
     pauser: asyncio.Semaphore | None = None,
-) -> ATicker:
+) -> Ticker:
     """
     .. code-block:: python
 
@@ -305,13 +305,13 @@ def tick(
 
         # Is a nicer way of saying
 
-        async for i in hp.ATicker(every):
+        async for i in hp.Ticker(every):
             yield i
 
     If you want control of the ticker during the iteration, then use
-    :class:`ATicker` directly.
+    :class:`Ticker` directly.
     """
-    return ATicker(
+    return Ticker(
         every,
         final_future=final_future,
         max_iterations=max_iterations,
