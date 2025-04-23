@@ -85,48 +85,6 @@ class TestATempFile:
         assert not os.path.exists(fle.name)
 
 
-class TestJustLogExceptions:
-    def test_logs_exceptions(self):
-        log = mock.Mock(name="log")
-
-        error = ValueError("NOPE")
-        with hp.just_log_exceptions(log):
-            raise error
-
-        log.error.assert_called_once_with(
-            "Unexpected error", exc_info=(ValueError, error, mock.ANY)
-        )
-
-    def test_can_be_given_a_different_message(self):
-        log = mock.Mock(name="log")
-
-        error = ValueError("NOPE")
-        with hp.just_log_exceptions(log, message="a different message"):
-            raise error
-
-        log.error.assert_called_once_with(
-            "a different message", exc_info=(ValueError, error, mock.ANY)
-        )
-
-    def test_can_reraise_particular_errors(self):
-        log = mock.Mock(name="log")
-
-        error = ValueError("NOPE")
-        with hp.just_log_exceptions(log, message="a different message", reraise=[TypeError]):
-            raise error
-
-        log.error.assert_called_once_with(
-            "a different message", exc_info=(ValueError, error, mock.ANY)
-        )
-        log.error.reset_mock()
-
-        with pytest.raises(TypeError, match="wat"):
-            with hp.just_log_exceptions(log, message="a different message", reraise=[TypeError]):
-                raise TypeError("wat")
-
-        log.assert_not_called()
-
-
 class TestNestedDictRetrieve:
     def test_returns_us_the_dflt_if_we_cant_find_the_key(self):
         data = {"one": {"two": {"three": 3}}}

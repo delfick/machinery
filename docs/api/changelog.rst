@@ -13,6 +13,7 @@ Changelog
     * Removed ``hp.AsyncCMMixin`` in favour of being explicit about what it does
       on classes that use it.
     * Removed ``hp.Nope``
+    * Removed a number of other helpers that are too random for this library
     * Machinery is now Python3.13+
 
 .. _release-0.1.1:

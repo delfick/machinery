@@ -26,7 +26,6 @@ transfer_result = _helpers.futures.transfer_result
 noncancelled_results_from_futs = _helpers.futures.noncancelled_results_from_futs
 find_and_apply_result = _helpers.futures.find_and_apply_result
 
-just_log_exceptions = _helpers.other.just_log_exceptions
 add_error = _helpers.other.add_error
 a_temp_file = _helpers.other.a_temp_file
 nested_dict_retrieve = _helpers.other.nested_dict_retrieve
