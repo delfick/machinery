@@ -1,7 +1,4 @@
-import os
 from unittest import mock
-
-import pytest
 
 from machinery import helpers as hp
 
@@ -67,19 +64,3 @@ class TestAddError:
         catcher = set()
         hp.add_error(catcher, error)
         assert catcher == set([error])
-
-
-class TestATempFile:
-    def test_gives_us_the_tmpfile(self):
-        with hp.a_temp_file() as fle:
-            fle.write(b"wassup")
-            fle.seek(0)
-            assert os.path.exists(fle.name)
-            assert fle.read() == b"wassup"
-        assert not os.path.exists(fle.name)
-
-    def test_doesnt_fail_if_we_delete_the_file_early(self):
-        with hp.a_temp_file() as fle:
-            fle.close()
-            os.remove(fle.name)
-        assert not os.path.exists(fle.name)

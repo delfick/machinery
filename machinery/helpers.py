@@ -27,7 +27,6 @@ noncancelled_results_from_futs = _helpers.futures.noncancelled_results_from_futs
 find_and_apply_result = _helpers.futures.find_and_apply_result
 
 add_error = _helpers.other.add_error
-a_temp_file = _helpers.other.a_temp_file
 
 TaskHolder = _helpers.task_holder.TaskHolder
 
