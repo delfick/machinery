@@ -1,34 +1,58 @@
 import asyncio
+import contextvars
 import inspect
 import logging
 import time
 import types
-from collections import defaultdict
-from contextvars import Context
-from typing import Self
+from collections.abc import Callable
+from typing import Any, Protocol, Self, TypeVarTuple, Unpack
 from unittest import mock
 
 from . import helpers as hp
+
+_Ts = TypeVarTuple("_Ts")
+
+
+class _CallLater(Protocol):
+    def __call__(
+        self,
+        delay: float,
+        callback: Callable[..., object],
+        *args: Any,
+        context: contextvars.Context | None = None,
+    ) -> asyncio.TimerHandle: ...
+
+
+class _CallableWithOriginal(Protocol):
+    @property
+    def original(self) -> Callable[..., object]: ...
+
+    def __call__(self) -> None: ...
+
+
+class Cancellable(Protocol):
+    def cancel(self) -> None: ...
+
 
 log = logging.getLogger()
 
 
 class FakeTime:
-    def __init__(self, mock_sleep=False, mock_async_sleep=False):
-        self.time = 0
-        self.patches = []
+    def __init__(self, mock_sleep: bool = False, mock_async_sleep: bool = False) -> None:
+        self.time: float = 0
+        self.patches: list[mock._patch[object]] = []
         self.mock_sleep = mock_sleep
         self.mock_async_sleep = mock_async_sleep
         self.original_time = time.time
         self.original_async_sleep = asyncio.sleep
 
-    def set(self, t):
+    def set(self, t: float) -> None:
         self.time = round(t, 3)
 
-    def add(self, t):
+    def add(self, t: float) -> None:
         self.time = round(self.time + t, 3)
 
-    def __enter__(self):
+    def __enter__(self) -> Self:
         return self.start()
 
     def start(self) -> Self:
@@ -44,7 +68,12 @@ class FakeTime:
 
         return self
 
-    def __exit__(self, exc_typ, exc, tb):
+    def __exit__(
+        self,
+        exc_typ: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: types.TracebackType | None,
+    ) -> None:
         self.finish(exc_typ, exc, tb)
 
     def finish(
@@ -56,13 +85,13 @@ class FakeTime:
         for p in self.patches:
             p.stop()
 
-    def __call__(self):
+    def __call__(self) -> float:
         return round(self.time, 3)
 
-    def sleep(self, amount):
+    def sleep(self, amount: float) -> None:
         self.add(amount)
 
-    async def async_sleep(self, amount):
+    async def async_sleep(self, amount: float) -> None:
         self.add(amount)
         await self.original_async_sleep(0.001)
 
@@ -80,7 +109,11 @@ class MockedCallLater:
         async with hp.ensure_aexit(self):
             return await self.start()
 
-    def __init__(self, t, loop, precision=0.1):
+    original_call_later: _CallLater
+
+    def __init__(
+        self, t: FakeTime, loop: asyncio.AbstractEventLoop, precision: float = 0.1
+    ) -> None:
         self.t = t
         self.loop = loop
         self.precision = precision
@@ -88,12 +121,12 @@ class MockedCallLater:
         tramp = hp.Tramp(log=log)
         self.ctx = hp.CTX.beginning(name="::", tramp=tramp)
 
-        self.task = None
-        self.call_later_patch = None
-        self.create_future_patch = None
+        self.task: asyncio.Task[None] | None = None
+        self.call_later_patch: mock._patch[object] | None = None
+        self.create_future_patch: mock._patch[object] | None = None
 
-        self.funcs = []
-        self.called_times = []
+        self.funcs: list[tuple[float, _CallableWithOriginal]] = []
+        self.called_times: list[float] = []
         self.have_call_later = asyncio.Event()
 
     async def start(self) -> Self:
@@ -115,26 +148,31 @@ class MockedCallLater:
             self.task.cancel()
             await self.ctx.wait_for_all_futures(self.task)
 
-    async def add(self, amount):
+    async def add(self, amount: float) -> None:
         await self._run(iterations=round(amount / 0.1))
 
-    async def resume_after(self, amount):
-        fut = self.hp.create_future()
+    async def resume_after(self, amount: float) -> None:
+        fut = self.loop.create_future()
         self.loop.call_later(amount, fut.set_result, True)
         await fut
 
-    @property
-    def hp(self):
-        return __import__("machinery").helpers
-
-    def _call_later(self, when, func, *args):
+    def _call_later[*T_Args, T_Ret](
+        self, when: float, func: Callable[[Unpack[T_Args]], T_Ret], *args: Unpack[T_Args]
+    ) -> Cancellable:
         fr = inspect.currentframe()
         while fr and "tornado/" not in fr.f_code.co_filename:
             fr = fr.f_back
         if fr:
             return self.original_call_later(when, func, *args)
 
-        called_from = inspect.currentframe().f_back.f_code.co_filename
+        current_frame = inspect.currentframe()
+        assert current_frame is not None
+        frame_back = current_frame.f_back
+        assert frame_back is not None
+        frame_code = frame_back.f_code
+        assert frame_code is not None
+
+        called_from = frame_code.co_filename
         if any(exc in called_from for exc in ("alt_pytest_asyncio/",)):
             return self.original_call_later(when, func, *args)
 
@@ -142,29 +180,31 @@ class MockedCallLater:
 
         info = {"cancelled": False}
 
-        def caller():
-            if not info["cancelled"]:
-                self.called_times.append(time.time())
-                func(*args)
+        class Caller:
+            def __init__(s) -> None:
+                self.original = func
 
-        caller.original = func
+            def __call__(s) -> None:
+                if not info["cancelled"]:
+                    self.called_times.append(time.time())
+                    func(*args)
 
         class Handle:
-            def cancel(s):
+            def cancel(s) -> None:
                 info["cancelled"] = True
 
-        self.funcs.append((round(time.time() + when, 3), caller))
+        self.funcs.append((round(time.time() + when, 3), Caller()))
         return Handle()
 
-    async def _allow_real_loop(self, until=0):
+    async def _allow_real_loop(self, until: float = 0) -> None:
         while True:
-            ready = self.loop._ready
+            ready = self.loop._ready  # type: ignore[attr-defined]
             ready_len = len(ready)
             await asyncio.sleep(0)
             if ready_len <= until:
                 return
 
-    async def _calls(self):
+    async def _calls(self) -> None:
         await self.have_call_later.wait()
 
         while True:
@@ -174,11 +214,11 @@ class MockedCallLater:
             if not self.funcs:
                 self.have_call_later.clear()
 
-    async def _run(self, iterations=0):
+    async def _run(self, iterations: int = 0) -> bool:
         for iteration in range(iterations + 1):
             now = time.time()
             executed = False
-            remaining = []
+            remaining: list[tuple[float, _CallableWithOriginal]] = []
 
             for k, f in self.funcs:
                 if now < k:
@@ -272,15 +312,21 @@ class FutureDominoes:
         async with hp.ensure_aexit(self):
             return await self.start()
 
-    def __init__(self, *, loop, before_next_domino=None, expected):
-        self.futs = {}
-        self.retrieved = {}
+    def __init__(
+        self,
+        *,
+        loop: asyncio.AbstractEventLoop,
+        before_next_domino: Callable[[int], None] | None = None,
+        expected: int,
+    ) -> None:
+        self.futs: dict[int, asyncio.Future[None]] = {}
+        self.retrieved: dict[int, asyncio.Future[None]] = {}
         self.loop = loop
 
         self.upto = 1
-        self.expected = int(expected)
+        self.expected = expected
         self.before_next_domino = before_next_domino
-        self.finished = self.loop.create_future()
+        self.finished: asyncio.Future[None] = self.loop.create_future()
 
         tramp = hp.Tramp(log=log)
         self.ctx = hp.CTX.beginning(name="::", tramp=tramp)
@@ -290,7 +336,7 @@ class FutureDominoes:
 
     async def start(self) -> Self:
         self._tick = self.ctx.async_as_background(self.tick())
-        self._tick.add_done_callback(self.ctx.transfer_result(self.finished))
+        self._tick.add_done_callback(hp.transfer_result(self.finished))
         return self
 
     async def finish(
@@ -307,8 +353,8 @@ class FutureDominoes:
         if not exc:
             await self._tick
 
-    async def tick(self):
-        async with self.hp.tick(0, min_wait=0) as ticks:
+    async def tick(self) -> None:
+        async with hp.Ticker(0, ctx=self.ctx, min_wait=0) as ticks:
             async for i, _ in ticks:
                 await self.ctx.wait_for_all_futures(self.retrieved[i], self.futs[i])
                 print(f"Waited for Domino {i}")  # noqa: T201
@@ -320,7 +366,7 @@ class FutureDominoes:
                 if i >= self.expected:
                     print("Finished knocking over dominoes")  # noqa: T201
                     if not self.finished.done():
-                        self.finished.set_result(True)
+                        self.finished.set_result(None)
 
                 if self.finished.done():
                     return
@@ -331,25 +377,21 @@ class FutureDominoes:
                     self.before_next_domino(i)
 
                 if not self.futs[i + 1].done():
-                    self.futs[i + 1].set_result(True)
+                    self.futs[i + 1].set_result(None)
 
-    async def _allow_real_loop(self):
+    async def _allow_real_loop(self) -> None:
         until = 0
         if "mock" in str(self.loop.call_later).lower():
             until = 1
 
         while True:
-            ready = self.loop._ready
+            ready = self.loop._ready  # type: ignore[attr-defined]
             ready_len = len(ready)
             await asyncio.sleep(0)
             if ready_len <= until:
                 return
 
-    @property
-    def hp(self):
-        return __import__("machinery").helpers
-
-    def make(self, num):
+    def make(self, num: int) -> asyncio.Future[None]:
         if num > self.expected or self.finished.done():
             exc = Exception(f"Only expected up to {self.expected} dominoes")
             if not self.finished.done():
@@ -361,16 +403,21 @@ class FutureDominoes:
         if num in self.futs:
             return self.futs[num]
 
-        fut = self.hp.create_future(name=f"Domino({num})")
+        fut = self.loop.create_future()
+        self.ctx.tramp.set_future_name(fut, name=f"Domino({num})")
         self.futs[num] = fut
-        self.retrieved[num] = self.hp.create_future(name=f"Domino({num}.retrieved")
-        fut.add_done_callback(self.hp.transfer_result(self.finished, errors_only=True))
+
+        retrieved = self.loop.create_future()
+        self.ctx.tramp.set_future_name(retrieved, name=f"Domino({num}.retrieved")
+        self.retrieved[num] = retrieved
+
+        fut.add_done_callback(hp.transfer_result(self.finished, errors_only=True))
         return fut
 
-    def __getitem__(self, num):
+    def __getitem__(self, num: int) -> asyncio.Future[None]:
         if not self.futs[1].done():
-            self.futs[1].set_result(True)
+            self.futs[1].set_result(None)
         fut = self.make(num)
         if not self.retrieved[num].done():
-            self.retrieved[num].set_result(True)
+            self.retrieved[num].set_result(None)
         return fut

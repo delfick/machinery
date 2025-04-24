@@ -1,5 +1,7 @@
 import asyncio
 import time
+from collections.abc import Callable
+from typing import Unpack
 
 import pytest
 
@@ -12,7 +14,7 @@ def loop() -> asyncio.AbstractEventLoop:
 
 
 class TestMockedCalledLater:
-    async def test_works(self, loop: asyncio.AbstractEventLoop):
+    async def test_works(self, loop: asyncio.AbstractEventLoop) -> None:
         with thp.FakeTime() as t:
             async with thp.MockedCallLater(t, loop=loop):
                 waiter = asyncio.Event()
@@ -20,7 +22,7 @@ class TestMockedCalledLater:
                 await waiter.wait()
                 assert time.time() == 5
 
-    async def test_does_the_calls_in_order(self, loop: asyncio.AbstractEventLoop):
+    async def test_does_the_calls_in_order(self, loop: asyncio.AbstractEventLoop) -> None:
         with thp.FakeTime() as t:
             async with thp.MockedCallLater(t, loop=loop):
                 assert time.time() == 0
@@ -28,7 +30,7 @@ class TestMockedCalledLater:
                 called = []
                 waiter = asyncio.Event()
 
-                def c(v):
+                def c(v: str) -> None:
                     called.append((time.time(), v))
                     if len(called) == 4:
                         waiter.set()
@@ -42,16 +44,18 @@ class TestMockedCalledLater:
 
                 assert called == [(0.3, "0.3"), (1, "1"), (2, "2"), (5, "5")]
 
-    async def test_can_cancel_handles(self, loop: asyncio.AbstractEventLoop):
+    async def test_can_cancel_handles(self, loop: asyncio.AbstractEventLoop) -> None:
         with thp.FakeTime() as t:
             async with thp.MockedCallLater(t, loop=loop) as m:
-                info = {"handle": None}
+                info: dict[str, asyncio.TimerHandle | None] = {"handle": None}
 
-                def nxt(*args):
+                def nxt[*T_Args](
+                    delay: float, callback: Callable[[Unpack[T_Args]], None], *args: Unpack[T_Args]
+                ) -> None:
                     if info["handle"]:
                         info["handle"].cancel()
 
-                    info["handle"] = loop.call_later(*args)
+                    info["handle"] = loop.call_later(delay, callback, *args)
 
                 waiter = asyncio.Event()
                 nxt(1, waiter.set)
