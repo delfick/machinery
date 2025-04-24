@@ -33,10 +33,14 @@ class TestQueueFeeder:
 
                         if value == 1:
                             feeder.add_value(3)
+
                         elif value == 3:
                             feeder.add_value(4)
                             feeder.set_as_finished_if_out_of_sources()
                             feeder.add_value(5)
+
+                        elif value == 4:
+                            feeder.add_value(6)
 
                     case hp.QueueManagerStopped():
                         got.append("stopped")
@@ -44,7 +48,7 @@ class TestQueueFeeder:
                     case _:
                         raise AssertionError(result)
 
-        assert got == [1, 2, 3, 4, 5, "stopped"]
+        assert got == [1, 2, 3, 4, 5, 6, "stopped"]
 
     async def test_it_can_adds_stopped_after_queue_is_empty_even_if_values_added_after_told_to_finished_when_empty(
         self, ctx: hp.CTX
