@@ -50,7 +50,9 @@ class TestMockedCalledLater:
                 info: dict[str, asyncio.TimerHandle | None] = {"handle": None}
 
                 def nxt[*T_Args](
-                    delay: float, callback: Callable[[Unpack[T_Args]], None], *args: Unpack[T_Args]
+                    delay: float,
+                    callback: Callable[[Unpack[T_Args]], None],
+                    *args: *T_Args,
                 ) -> None:
                     if info["handle"]:
                         info["handle"].cancel()

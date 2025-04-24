@@ -26,7 +26,7 @@ class TestTaskHolder:
     async def test_can_take_in_tasks(self, ctx: hp.CTX) -> None:
         called = []
 
-        async def wait(amount):
+        async def wait(amount: float) -> None:
             try:
                 await asyncio.sleep(amount)
             finally:
@@ -43,7 +43,7 @@ class TestTaskHolder:
     ) -> None:
         called = []
 
-        async def wait(amount):
+        async def wait(amount: float) -> None:
             try:
                 await asyncio.sleep(amount)
             finally:
@@ -61,7 +61,7 @@ class TestTaskHolder:
     ) -> None:
         called = []
 
-        async def wait(ts, amount):
+        async def wait(ts: hp.TaskHolder, amount: float) -> None:
             if amount == 0.01:
                 ts.add(wait(ts, 0.06))
             try:
@@ -78,7 +78,7 @@ class TestTaskHolder:
     async def test_does_not_fail_if_a_task_raises_an_exception(self, ctx: hp.CTX) -> None:
         called = []
 
-        async def wait(ts, amount):
+        async def wait(ts: hp.TaskHolder, amount: float) -> None:
             if amount == 0.01:
                 ts.add(wait(ts, 0.06))
             try:
@@ -97,7 +97,7 @@ class TestTaskHolder:
     async def test_stops_waiting_tasks_if_ctx_is_stopped(self, ctx: hp.CTX) -> None:
         called = []
 
-        async def wait(ts, amount):
+        async def wait(ts: hp.TaskHolder, amount: float) -> None:
             try:
                 await asyncio.sleep(amount)
                 if amount == 0.05:
@@ -116,7 +116,7 @@ class TestTaskHolder:
     async def test_can_say_how_many_pending_tasks_it_has(self, ctx: hp.CTX) -> None:
         called = []
 
-        async def doit():
+        async def doit() -> None:
             await asyncio.sleep(1)
 
         async with hp.TaskHolder(ctx=ctx) as ts:
@@ -124,7 +124,7 @@ class TestTaskHolder:
             t = ts.add(doit())
             assert ts.pending == 1
 
-            def process(res):
+            def process(res: hp.protocols.FutureStatus[None]) -> None:
                 called.append(ts.pending)
 
             t.add_done_callback(process)
@@ -135,10 +135,10 @@ class TestTaskHolder:
     async def test_cancels_tasks_if_it_gets_cancelled(
         self, ctx: hp.CTX, loop: asyncio.AbstractEventLoop
     ) -> None:
-        called = []
+        called: list[object] = []
         waiter = loop.create_future()
 
-        async def a_task(name):
+        async def a_task(name: str) -> None:
             called.append(f"{name}_start")
             try:
                 await loop.create_future()
@@ -149,7 +149,7 @@ class TestTaskHolder:
             else:
                 called.append(f"{name}_end")
 
-        async def doit():
+        async def doit() -> None:
             async with hp.TaskHolder(ctx=ctx) as t:
                 t.add(a_task("one"))
                 t.add(a_task("two"))
@@ -172,7 +172,7 @@ class TestTaskHolder:
     async def test_can_iterate_tasks(self, ctx: hp.CTX) -> None:
         async with hp.TaskHolder(ctx=ctx) as ts:
 
-            async def hi():
+            async def hi() -> None:
                 pass
 
             t1 = ts.add(hi())
@@ -185,7 +185,7 @@ class TestTaskHolder:
     async def test_can_say_if_the_holder_has_a_task(self, ctx: hp.CTX) -> None:
         async with hp.TaskHolder(ctx=ctx) as ts:
 
-            async def hi():
+            async def hi() -> None:
                 pass
 
             t1 = ctx.async_as_background(hi())
@@ -204,7 +204,7 @@ class TestTaskHolder:
         called = []
         wait = loop.create_future()
 
-        async def one():
+        async def one() -> None:
             called.append("ONE")
             try:
                 await asyncio.sleep(200)
@@ -214,7 +214,7 @@ class TestTaskHolder:
             finally:
                 called.append("FIN_ONE")
 
-        async def two():
+        async def two() -> None:
             called.append("TWO")
             try:
                 await wait
@@ -247,12 +247,12 @@ class TestTaskHolder:
                 made = {}
 
                 class TaskHolderManualClean(hp.TaskHolder):
-                    async def cleaner(self):
+                    async def cleaner(self) -> None:
                         await loop.create_future()
 
                 async with TaskHolderManualClean(ctx=ctx) as ts:
 
-                    async def one():
+                    async def one() -> None:
                         called.append("ONE")
                         try:
                             await asyncio.sleep(10)
@@ -262,7 +262,7 @@ class TestTaskHolder:
                         finally:
                             called.append("FIN_ONE")
 
-                    async def two():
+                    async def two() -> None:
                         called.append("TWO")
                         try:
                             await asyncio.sleep(200)
@@ -274,7 +274,7 @@ class TestTaskHolder:
 
                     t1 = ts.add(two())
 
-                    def add_one(res):
+                    def add_one(res: hp.protocols.FutureStatus[None]) -> None:
                         called.append("ADD_ONE")
                         made["t2"] = ts.add(one())
 

@@ -23,7 +23,7 @@ class CalledHelper:
 
     def make_on_done(
         self,
-        event,
+        event: asyncio.Event,
         expected_ctx: hp.protocols.CTX,
         value: int | str,
         expected_exception: type[asyncio.CancelledError] | Exception | None,
@@ -45,7 +45,7 @@ class CalledHelper:
 
     def make_simpler_on_done(
         self,
-        event,
+        event: asyncio.Event,
         value: int | str,
         expected_exception: type[asyncio.CancelledError] | Exception | None,
     ) -> hp.protocols.FutureCallback[None]:
@@ -110,7 +110,7 @@ class TestTramp:
 
         def test_just_reprs_a_not_future(self, tramp: hp.Tramp) -> None:
             class Thing:
-                def __repr__(s):
+                def __repr__(s) -> str:
                     return "<REPR THING>"
 
             assert tramp.fut_to_string(Thing()) == "<REPR THING>"

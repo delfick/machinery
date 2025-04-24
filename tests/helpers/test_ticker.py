@@ -134,7 +134,7 @@ class TestTick:
 
     async def test_keeps_yielding_such_that_yields_are_best_effort_every_apart_when_tasks_go_over(
         self, fake_mocked_later: thp.MockedCallLater, ctx: hp.CTX
-    ):
+    ) -> None:
         called = []
 
         async with hp.tick(3, ctx=ctx) as ticks:

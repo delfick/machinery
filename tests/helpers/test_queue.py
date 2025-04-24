@@ -73,7 +73,7 @@ class TestQueue:
 
             found = []
 
-            async def fill():
+            async def fill() -> None:
                 for i in (2, 3, 4):
                     queue.append(i)
                 await wait
@@ -108,7 +108,7 @@ class TestQueue:
 
             found = []
 
-            async def fill():
+            async def fill() -> None:
                 for i in (2, 3, 4):
                     queue.append(i)
                 await wait
@@ -164,7 +164,7 @@ class TestQueue:
 
             found = []
 
-            async def fill():
+            async def fill() -> None:
                 for i in (2, 3, 4):
                     queue.append(i)
                 await wait
@@ -199,7 +199,7 @@ class TestQueue:
 
             found = []
 
-            async def fill():
+            async def fill() -> None:
                 for i in (2, 3, 4):
                     queue.append(i)
                 await wait
@@ -298,7 +298,7 @@ class TestSyncQueue:
 
             found = []
 
-            async def fill():
+            async def fill() -> None:
                 for i in (2, 3, 4):
                     queue.append(i)
                 await wait
@@ -335,7 +335,7 @@ class TestSyncQueue:
 
             found = []
 
-            async def fill():
+            async def fill() -> None:
                 for i in (2, 3, 4):
                     queue.append(i)
                 await wait
@@ -393,7 +393,7 @@ class TestSyncQueue:
 
             found = []
 
-            async def fill():
+            async def fill() -> None:
                 for i in (2, 3, 4):
                     queue.append(i)
                 await wait
@@ -430,7 +430,7 @@ class TestSyncQueue:
 
             found = []
 
-            async def fill():
+            async def fill() -> None:
                 for i in (2, 3, 4):
                     queue.append(i)
                 await wait

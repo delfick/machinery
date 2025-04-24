@@ -5,20 +5,18 @@ import logging
 import time
 import types
 from collections.abc import Callable
-from typing import Any, Protocol, Self, TypeVarTuple, Unpack
+from typing import Protocol, Self, Unpack
 from unittest import mock
 
 from . import helpers as hp
 
-_Ts = TypeVarTuple("_Ts")
-
 
 class _CallLater(Protocol):
-    def __call__(
+    def __call__[*T_Args](
         self,
         delay: float,
-        callback: Callable[..., object],
-        *args: Any,
+        callback: Callable[[Unpack[T_Args]], object],
+        *args: *T_Args,
         context: contextvars.Context | None = None,
     ) -> asyncio.TimerHandle: ...
 
@@ -157,7 +155,7 @@ class MockedCallLater:
         await fut
 
     def _call_later[*T_Args, T_Ret](
-        self, when: float, func: Callable[[Unpack[T_Args]], T_Ret], *args: Unpack[T_Args]
+        self, when: float, func: Callable[[Unpack[T_Args]], T_Ret], *args: *T_Args
     ) -> Cancellable:
         fr = inspect.currentframe()
         while fr and "tornado/" not in fr.f_code.co_filename:

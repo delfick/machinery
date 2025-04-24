@@ -71,6 +71,7 @@ select = [
 ]
 
 [tool.mypy]
+strict = true
 exclude = '''(?x)(
     .DS_Store
     | .pytest_cache 

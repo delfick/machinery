@@ -59,7 +59,7 @@ class Tramp(Protocol):
     def silent_reporter(self) -> Reporter[Any]: ...
 
 
-class CTX[T_Tramp: Tramp](Protocol):
+class CTX[T_Tramp: Tramp = Tramp](Protocol):
     @property
     def loop(self) -> asyncio.AbstractEventLoop: ...
 
