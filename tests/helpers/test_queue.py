@@ -245,6 +245,23 @@ class TestQueue:
 
             assert found == list(range(10))
 
+        async def test_can_append_with_priority(self, ctx: hp.CTX) -> None:
+            found: list[object] = []
+            queue = hp.Queue(ctx=ctx)
+
+            for i in range(10):
+                queue.append(i)
+
+            async for item in queue:
+                found.append(item)
+                if i == 3:
+                    queue.append(50, priority=True)
+
+                if i == 7:
+                    queue.ctx.cancel()
+
+            assert found == [1, 2, 3, 50, 4, 5, 6, 7]
+
 
 class TestSyncQueue:
     def test_takes_in_a_ctx(self, ctx: hp.CTX) -> None:

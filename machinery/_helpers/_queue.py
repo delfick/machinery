@@ -141,8 +141,11 @@ class Queue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     ) -> None:
         self.ctx.cancel()
 
-    def append(self, item: T_Item) -> None:
-        self.collection.append(item)
+    def append(self, item: T_Item, *, priority: bool = False) -> None:
+        if priority:
+            self.collection.insert(0, item)
+        else:
+            self.collection.append(item)
         self.waiter.set()
 
     def __aiter__(self) -> AsyncGenerator[T_Item]:

@@ -71,6 +71,36 @@ class TestQueueFeeder:
 
         assert got == [1, 2, "stopped", 3]
 
+    async def test_it_processes_stopped_before_everything_in_queue_on_manager_stopping(
+        self, ctx: hp.CTX
+    ) -> None:
+        got: list[object] = []
+        queue_manager = hp.QueueManager(ctx=ctx, make_empty_context=lambda: None)
+
+        async with hp.TaskHolder(ctx=ctx) as ts:
+            streamer, feeder = queue_manager.create_feeder(task_holder=ts)
+
+            feeder.add_value(1)
+            feeder.add_value(2)
+            feeder.add_value(3)
+
+            async for result in streamer:
+                match result:
+                    case hp.QueueManagerSuccess(value=value):
+                        got.append(value)
+
+                        if value == 2:
+                            queue_manager.ctx.cancel()
+                            feeder.add_value(4)
+
+                    case hp.QueueManagerStopped():
+                        got.append("stopped")
+
+                    case _:
+                        raise AssertionError(result)
+
+        assert got == [1, 2, "stopped", 3, 4]
+
     async def test_it_can_match_values_on_context(self, ctx: hp.CTX) -> None:
         got: list[object] = []
         queue_manager = hp.QueueManager(ctx=ctx, make_empty_context=lambda: "")

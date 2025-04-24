@@ -336,19 +336,19 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
         else:
             exc = res.exception()
 
-        self._send_stop(exc)
+        self._send_stop(exc, priority=True)
 
     def _clear_sources(self) -> None:
         self.sources = [source for source in self.sources if not source.finished]
         if not self.sources and self.finished_if_empty_sources:
             self._send_stop()
 
-    def _send_stop(self, exc: BaseException | None = None, /) -> None:
+    def _send_stop(self, exc: BaseException | None = None, /, *, priority: bool = False) -> None:
         if self.sent_stop.is_set():
             return
 
         self.sent_stop.set()
-        self.queue.append(QueueManagerStopped(exception=exc))
+        self.queue.append(QueueManagerStopped(exception=exc), priority=priority)
         self.queue.ctx.cancel()
 
 
