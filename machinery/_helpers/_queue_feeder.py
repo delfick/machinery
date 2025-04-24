@@ -18,28 +18,28 @@ class QueueInput(enum.Enum):
     ASYNC_GENERATOR = "ASYNC_GENERATOR"
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class QueueManagerSuccess[T_QueueContext]:
     sources: Sequence[tuple[QueueInput, object]]
     value: object
     context: T_QueueContext
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class QueueManagerFailure[T_QueueContext]:
     sources: Sequence[tuple[QueueInput, object]]
     exception: BaseException
     context: T_QueueContext
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class QueueManagerIterationStop[T_QueueContext]:
     sources: Sequence[tuple[QueueInput, object]]
     exception: BaseException | None
     context: T_QueueContext
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class QueueManagerStopped:
     exception: BaseException | None = None
 
@@ -52,11 +52,11 @@ type QueueManagerResult[T_QueueContext] = (
 )
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class _QueueSource:
     input_type: QueueInput
     source: object
-    finished: bool = False
+    finished: asyncio.Event = dataclasses.field(default_factory=asyncio.Event)
     parent_source: Optional["_QueueSource"] = None
 
     @property
@@ -67,28 +67,25 @@ class _QueueSource:
         return tuple(result)
 
 
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
-    def __init__(
-        self,
-        *,
-        ctx: _context.CTX[T_Tramp],
-        task_holder: _task_holder.TaskHolder[T_Tramp],
-        queue: _queue.Queue[QueueManagerResult[T_QueueContext], T_Tramp],
-        make_empty_context: Callable[[], T_QueueContext],
-    ) -> None:
-        self.ctx = ctx
-        self.queue = queue
-        self.task_holder = task_holder
-        self.sent_stop = asyncio.Event()
-        self.sources: list[_QueueSource] = []
-        self.make_empty_context = make_empty_context
-        self.finished_if_empty_sources: bool = False
+    ctx: _context.CTX[T_Tramp]
+    queue: _queue.Queue[QueueManagerResult[T_QueueContext], T_Tramp]
+    task_holder: _task_holder.TaskHolder[T_Tramp]
+    make_empty_context: Callable[[], T_QueueContext]
 
+    sent_stop: asyncio.Event = dataclasses.field(default_factory=asyncio.Event, init=False)
+    sources: list[_QueueSource] = dataclasses.field(default_factory=list, init=False)
+    finished_if_empty_sources: asyncio.Event = dataclasses.field(
+        default_factory=asyncio.Event, init=False
+    )
+
+    def __post_init__(self) -> None:
         self.queue.ctx.add_done_callback(self._on_queue_stopped)
         self.queue.process_after_yielded(self._process_queue_after_yielded)
 
     def set_as_finished_if_out_of_sources(self) -> None:
-        self.finished_if_empty_sources = True
+        self.finished_if_empty_sources.set()
         self._clear_sources()
 
     def _extend_result(
@@ -137,7 +134,7 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
         else:
             self._extend_result(result=result, source=source, context=context)
 
-        source.finished = True
+        source.finished.set()
         self._clear_sources()
 
     def add_sync_iterator(
@@ -183,7 +180,7 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
                     self._extend_result(result=nxt, source=source, context=context)
 
         def on_done(res: _protocols.FutureStatus[None]) -> None:
-            source.finished = True
+            source.finished.set()
 
             exc: BaseException | None
             if res.cancelled():
@@ -198,7 +195,7 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
                     context=context if context is not None else self.make_empty_context(),
                 )
             )
-            source.finished = True
+            source.finished.set()
             self._clear_sources()
 
         task = self.task_holder.add(process_iterator())
@@ -218,7 +215,7 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
         self.sources.append(source)
 
         self._extend_result(result=value, source=source, context=context)
-        source.finished = True
+        source.finished.set()
         self._clear_sources()
 
     def add_coroutine(
@@ -234,7 +231,7 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
         self.sources.append(source)
         self.add_task(self.task_holder.add(coro), context=context, _parent_source=source)
 
-        source.finished = True
+        source.finished.set()
         self._clear_sources()
 
     def add_task(
@@ -250,7 +247,7 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
         self.sources.append(source)
 
         def on_done(res: _protocols.FutureStatus[object]) -> None:
-            source.finished = True
+            source.finished.set()
 
             exc: BaseException | None
             if res.cancelled():
@@ -269,7 +266,7 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
             else:
                 self._extend_result(result=res.result(), source=source, context=context)
 
-            source.finished = True
+            source.finished.set()
             self._clear_sources()
 
         if task.done():
@@ -308,8 +305,6 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
                     self._extend_result(result=nxt, source=source, context=context)
 
         def on_done(res: _protocols.FutureStatus[None]) -> None:
-            source.finished = True
-
             exc: BaseException | None
             if res.cancelled():
                 exc = asyncio.CancelledError()
@@ -323,7 +318,7 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
                     context=context if context is not None else self.make_empty_context(),
                 )
             )
-            source.finished = True
+            source.finished.set()
             self._clear_sources()
 
         task = self.task_holder.add(process_generator())
@@ -340,7 +335,7 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
         self._send_stop(exc, priority=True)
 
     def _clear_sources(self) -> None:
-        self.sources = [source for source in self.sources if not source.finished]
+        self.sources[:] = [source for source in self.sources if not source.finished.is_set()]
 
     def _send_stop(self, exc: BaseException | None = None, /, *, priority: bool = False) -> None:
         if self.sent_stop.is_set():
@@ -353,16 +348,14 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
     def _process_queue_after_yielded(
         self, queue: _queue.Queue[QueueManagerResult[T_QueueContext], T_Tramp]
     ) -> None:
-        if not self.sources and self.finished_if_empty_sources and not queue.collection:
+        if not self.sources and self.finished_if_empty_sources.is_set() and not queue.collection:
             self._send_stop()
 
 
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class QueueManager[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
-    def __init__(
-        self, *, ctx: _context.CTX[T_Tramp], make_empty_context: Callable[[], T_QueueContext]
-    ) -> None:
-        self.ctx = ctx
-        self.make_empty_context = make_empty_context
+    ctx: _context.CTX[T_Tramp]
+    make_empty_context: Callable[[], T_QueueContext]
 
     def create_feeder(
         self, *, task_holder: _task_holder.TaskHolder[T_Tramp]
