@@ -37,6 +37,9 @@ class Tramp:
     def get_future_name(self, fut: asyncio.Future[Any]) -> str | None:
         return get_fut_names().get(fut)
 
+    def log_info(self, msg: str) -> None:
+        self.log.info(msg)
+
     def log_exception(
         self,
         msg: object,
