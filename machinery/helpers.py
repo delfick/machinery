@@ -19,3 +19,10 @@ tick = _helpers.ticker.tick
 
 Queue = _helpers.queue.Queue
 SyncQueue = _helpers.queue.SyncQueue
+
+QueueManager = _helpers.queue_feeder.QueueManager
+QueueManagerStopped = _helpers.queue_feeder.QueueManagerStopped
+QueueManagerSuccess = _helpers.queue_feeder.QueueManagerSuccess
+QueueManagerFailure = _helpers.queue_feeder.QueueManagerFailure
+QueueManagerIterationStop = _helpers.queue_feeder.QueueManagerIterationStop
+type QueueManagerResult[T_QueueContext] = _helpers.queue_feeder.QueueManagerResult[T_QueueContext]

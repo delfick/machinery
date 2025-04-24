@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import types
-from collections.abc import Callable, Coroutine
+from collections.abc import AsyncGenerator, Callable, Coroutine, Iterator
 from typing import TYPE_CHECKING, Any, Literal, Protocol, Self, cast
 
 
@@ -104,6 +104,38 @@ class CTX[T_Tramp: Tramp = Tramp](Protocol):
     ) -> asyncio.Task[T_Ret]: ...
 
     def child(self, *, name: str) -> Self: ...
+
+
+class QueueFeeder[T_QueueContext](Protocol):
+    def set_as_finished_if_out_of_sources(self) -> None: ...
+
+    def add_sync_function(
+        self, func: Callable[[], object], *, context: T_QueueContext | None = None
+    ) -> None: ...
+
+    def add_sync_iterator(
+        self, iterator: Iterator[object], *, context: T_QueueContext | None = None
+    ) -> None: ...
+
+    def add_value(self, value: object, *, context: T_QueueContext | None = None) -> None: ...
+
+    def add_coroutine(
+        self, coro: Coroutine[object, object, object], *, context: T_QueueContext | None = None
+    ) -> None: ...
+
+    def add_task(
+        self, task: asyncio.Task[object], *, context: T_QueueContext | None = None
+    ) -> None: ...
+
+    def add_async_generator(
+        self, agen: AsyncGenerator[object], *, context: T_QueueContext | None = None
+    ) -> None: ...
+
+
+class Streamer[T_Item](Protocol):
+    def __aiter__(self) -> AsyncGenerator[T_Item]: ...
+
+    def remaining(self) -> Iterator[T_Item]: ...
 
 
 if TYPE_CHECKING:
