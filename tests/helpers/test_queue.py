@@ -63,7 +63,7 @@ class TestQueue:
 
         assert not queue.collection
 
-    class GettingAllResults:
+    class TestGettingAllResults:
         async def test_can_get_results_until_ctx_is_done(
             self, ctx: hp.CTX, loop: asyncio.AbstractEventLoop
         ) -> None:
@@ -154,7 +154,7 @@ class TestQueue:
 
             assert found == list(range(10))
 
-    class GettingAllResultsAndEmptyOnFinished:
+    class TestGettingAllResultsAndEmptyOnFinished:
         async def test_can_get_results_until_ctx_is_done(
             self, ctx: hp.CTX, loop: asyncio.AbstractEventLoop
         ) -> None:
@@ -254,13 +254,37 @@ class TestQueue:
 
             async for item in queue:
                 found.append(item)
-                if i == 3:
+                if item == 3:
                     queue.append(50, priority=True)
 
-                if i == 7:
+                if item == 7:
                     queue.ctx.cancel()
 
-            assert found == [1, 2, 3, 50, 4, 5, 6, 7]
+            assert found == [0, 1, 2, 3, 50, 4, 5, 6, 7]
+
+        async def test_can_be_given_functions_to_do_something_after_values_after_yielded(
+            self, ctx: hp.CTX
+        ) -> None:
+            found: list[object] = []
+            queue = hp.Queue(ctx=ctx)
+
+            for i in range(10):
+                queue.append(i)
+
+            def sneaky_stop(queue: hp.Queue) -> None:
+                if len(queue.collection) == 3:
+                    queue.append(40)
+                    queue.ctx.cancel()
+                    found.append("sneaky_stop")
+
+            queue.process_after_yielded(sneaky_stop)
+
+            async for item in queue:
+                found.append(item)
+                found.append("-")
+
+            assert list(queue.collection) == [7, 8, 9, 40]
+            assert found == [0, "-", 1, "-", 2, "-", 3, "-", 4, "-", 5, "-", 6, "-", "sneaky_stop"]
 
 
 class TestSyncQueue:

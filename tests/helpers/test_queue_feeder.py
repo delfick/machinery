@@ -34,7 +34,9 @@ class TestQueueFeeder:
                         if value == 1:
                             feeder.add_value(3)
                         elif value == 3:
+                            feeder.add_value(4)
                             feeder.set_as_finished_if_out_of_sources()
+                            feeder.add_value(5)
 
                     case hp.QueueManagerStopped():
                         got.append("stopped")
@@ -42,9 +44,11 @@ class TestQueueFeeder:
                     case _:
                         raise AssertionError(result)
 
-        assert got == [1, 2, 3, "stopped"]
+        assert got == [1, 2, 3, 4, 5, "stopped"]
 
-    async def test_it_can_get_values_if_stopped_before_streamer_starts(self, ctx: hp.CTX) -> None:
+    async def test_it_can_adds_stopped_after_queue_is_empty_even_if_values_added_after_told_to_finished_when_empty(
+        self, ctx: hp.CTX
+    ) -> None:
         got: list[object] = []
         queue_manager = hp.QueueManager(ctx=ctx, make_empty_context=lambda: None)
 
@@ -69,7 +73,7 @@ class TestQueueFeeder:
                     case _:
                         raise AssertionError(result)
 
-        assert got == [1, 2, "stopped", 3]
+        assert got == [1, 2, 3, "stopped"]
 
     async def test_it_processes_stopped_before_everything_in_queue_on_manager_stopping(
         self, ctx: hp.CTX

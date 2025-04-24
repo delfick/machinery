@@ -2,7 +2,7 @@ import asyncio
 import collections
 import queue as stdqueue
 import types
-from collections.abc import AsyncGenerator, Iterator
+from collections.abc import AsyncGenerator, Callable, Iterator
 
 from . import _context, _protocols
 
@@ -126,12 +126,18 @@ class Queue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         self.ctx = ctx.child(name=f"Queue({self.name})::__init__[ctx]")
         self.waiter = asyncio.Event()
         self.empty_on_finished = empty_on_finished
+        self.after_yielded: list[Callable[[Queue[T_Item, T_Tramp]], None]] = []
 
         self.stop = False
         self.ctx.add_done_callback(self._stop_waiter)
 
     def _stop_waiter(self, res: _protocols.FutureStatus[None]) -> None:
         self.waiter.set()
+
+    def process_after_yielded(
+        self, process: Callable[["Queue[T_Item, T_Tramp]"], None], /
+    ) -> None:
+        self.after_yielded.append(process)
 
     async def finish(
         self,
@@ -177,6 +183,9 @@ class Queue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
                 self.waiter.clear()
 
             yield nxt
+
+            for process in self.after_yielded:
+                process(self)
 
     def remaining(self) -> Iterator[T_Item]:
         while self.collection:

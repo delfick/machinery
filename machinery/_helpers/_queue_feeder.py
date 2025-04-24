@@ -85,6 +85,7 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
         self.finished_if_empty_sources: bool = False
 
         self.queue.ctx.add_done_callback(self._on_queue_stopped)
+        self.queue.process_after_yielded(self._process_queue_after_yielded)
 
     def set_as_finished_if_out_of_sources(self) -> None:
         self.finished_if_empty_sources = True
@@ -340,8 +341,6 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
 
     def _clear_sources(self) -> None:
         self.sources = [source for source in self.sources if not source.finished]
-        if not self.sources and self.finished_if_empty_sources:
-            self._send_stop()
 
     def _send_stop(self, exc: BaseException | None = None, /, *, priority: bool = False) -> None:
         if self.sent_stop.is_set():
@@ -350,6 +349,12 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
         self.sent_stop.set()
         self.queue.append(QueueManagerStopped(exception=exc), priority=priority)
         self.queue.ctx.cancel()
+
+    def _process_queue_after_yielded(
+        self, queue: _queue.Queue[QueueManagerResult[T_QueueContext], T_Tramp]
+    ) -> None:
+        if not self.sources and self.finished_if_empty_sources:
+            self._send_stop()
 
 
 class QueueManager[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
