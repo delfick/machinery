@@ -211,9 +211,12 @@ class Ticker[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         pauser = self.pauser
 
         if pauser is None or not pauser.locked():
-            return await self.ctx.wait_for_first_future(
-                self.ctx, self.ctx.fut_from_event(self.waiter, name="wait_for_next")
-            )
+            task = self.ctx.loop.create_task(self.waiter.wait())
+            try:
+                return await self.ctx.wait_for_first_future(self.ctx, task)
+            finally:
+                task.cancel()
+                await self.ctx.wait_for_all_futures(task)
 
         async def pause() -> None:
             async with pauser:

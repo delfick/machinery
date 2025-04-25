@@ -368,21 +368,6 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         finally:
             handle.cancel()
 
-    def fut_from_event(self, event: asyncio.Event, *, name: str) -> asyncio.Future[None]:
-        fut: asyncio.Future[None] = self.loop.create_future()
-        self.tramp.set_future_name(fut, name=f"FUT_FROM_EVENT{{{name}}}")
-
-        async def wait() -> None:
-            await event.wait()
-
-        def on_done(res: asyncio.Future[None]) -> None:
-            if not fut.done():
-                fut.set_result(None)
-
-        task = self.async_as_background(wait())
-        task.add_done_callback(on_done)
-        return fut
-
     def async_as_background[T_Ret](
         self, coro: Coroutine[object, object, T_Ret], *, silent: bool = True
     ) -> asyncio.Task[T_Ret]:

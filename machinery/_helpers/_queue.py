@@ -162,9 +162,12 @@ class Queue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
             self.waiter.clear()
 
         while True:
-            await self.ctx.wait_for_first_future(
-                self.ctx, self.ctx.fut_from_event(self.waiter, name="get_all")
-            )
+            task = self.ctx.loop.create_task(self.waiter.wait())
+            try:
+                await self.ctx.wait_for_first_future(self.ctx, task)
+            finally:
+                task.cancel()
+                await self.ctx.wait_for_all_futures(task)
 
             if self.ctx.done() and not self.empty_on_finished:
                 break
