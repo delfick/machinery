@@ -1,13 +1,32 @@
 import asyncio
-from collections.abc import AsyncGenerator
+import logging
+from collections.abc import AsyncGenerator, Iterator
 
 import pytest
 
+from machinery import helpers as hp
 from machinery import test_helpers as thp
 
 
+@pytest.fixture
+def ctx() -> Iterator[hp.CTX]:
+    log = logging.getLogger()
+    log.level = logging.INFO
+
+    tramp: hp.protocols.Tramp = hp.Tramp(log=log)
+    with hp.CTX.beginning(name="::", tramp=tramp) as ctx:
+        yield ctx
+
+
+@pytest.fixture
+async def task_holder(ctx: hp.CTX) -> hp.TaskHolder:
+    with ctx.child(name="task_holder") as ctx_taskholder:
+        async with hp.TaskHolder(ctx=ctx_taskholder) as task_holder:
+            yield task_holder
+
+
 class TestFutureDominoes:
-    async def test_it_works(self) -> None:
+    async def test_it_works(self, task_holder: hp.TaskHolder) -> None:
         called: list[object] = []
         finished = asyncio.Event()
 
@@ -39,14 +58,14 @@ class TestFutureDominoes:
                 called.append("final")
                 finished.set()
 
-            futs.ctx.loop.create_task(three())
-            futs.ctx.loop.create_task(one())
+            task_holder.add(three())
+            task_holder.add(one())
 
             async def run_two() -> None:
                 async for r in two():
                     called.append(r)
 
-            futs.ctx.loop.create_task(run_two())
+            task_holder.add(run_two())
             futs.begin()
             await futs.finished.wait()
             await finished.wait()
@@ -64,7 +83,9 @@ class TestFutureDominoes:
                 "final",
             ]
 
-    async def test_it_complains_if_not_all_futures_are_retrieved(self) -> None:
+    async def test_it_complains_if_not_all_futures_are_retrieved(
+        self, task_holder: hp.TaskHolder
+    ) -> None:
         called: list[object] = []
 
         async def incomplete() -> None:
@@ -78,7 +99,7 @@ class TestFutureDominoes:
                     called.append("second")
                     finished.set()
 
-                futs.ctx.loop.create_task(one())
+                task_holder.add(one())
                 futs.begin()
                 await finished.wait()
 
@@ -92,7 +113,9 @@ class TestFutureDominoes:
             "second",
         ]
 
-    async def test_it_complains_if_not_all_futures_are_awaited(self) -> None:
+    async def test_it_complains_if_not_all_futures_are_awaited(
+        self, task_holder: hp.TaskHolder
+    ) -> None:
         called: list[object] = []
 
         async def incomplete() -> None:
@@ -108,7 +131,7 @@ class TestFutureDominoes:
                     called.append("second")
                     finished.set()
 
-                futs.ctx.loop.create_task(one())
+                task_holder.add(one())
                 futs.begin()
                 await finished.wait()
 

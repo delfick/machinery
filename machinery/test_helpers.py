@@ -288,7 +288,7 @@ class _Domino[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
     _ctx: hp.CTX[T_Tramp]
     _fut: asyncio.Future[None]
     _started: asyncio.Event
-    _requirements: Sequence[tuple[asyncio.Event, asyncio.Future[None]]]
+    _requirements: Sequence[tuple[asyncio.Future[None], asyncio.Future[None]]]
 
     def __await__(self) -> Generator[None]:
         return (yield from self._wait().__await__())
@@ -297,8 +297,7 @@ class _Domino[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
         await self._started.wait()
 
         for retrieved, fut in self._requirements:
-            await retrieved.wait()
-            await self._ctx.wait_for_all_futures(fut)
+            await self._ctx.wait_for_all_futures(retrieved, fut)
 
     def add_done_callback(
         self, cb: Callable[[hp.protocols.FutureStatus[None]], None]
@@ -331,34 +330,53 @@ class _Domino[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class _FutureDominoes[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
     ctx: hp.CTX[T_Tramp]
+
     started: asyncio.Event
     finished: asyncio.Event
 
     expected: int
     futs: Mapping[int, Domino]
-    retrieved: dict[int, asyncio.Event]
-    on_retrieved: set[asyncio.Future[None]]
+    retrieved: dict[int, asyncio.Future[None]]
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        value: BaseException | None,
+        tb: types.TracebackType | None,
+    ) -> None:
+        self.check_finished()
 
     @classmethod
     def create(
         cls,
         *,
         ctx: hp.CTX[T_Tramp],
+        task_holder: hp.TaskHolder[T_Tramp],
         expected: int,
     ) -> Self:
         futs: dict[int, Domino] = {}
-        retrieved: dict[int, asyncio.Event] = {}
+        retrieved: dict[int, asyncio.Future[None]] = {}
 
         started = asyncio.Event()
+        finished = asyncio.Event()
 
-        requirements: list[tuple[asyncio.Event, asyncio.Future[None]]] = []
+        requirements: list[tuple[asyncio.Future[None], asyncio.Future[None]]] = []
 
         for i in range(1, expected + 1):
-            retrieved_event = asyncio.Event()
-            retrieved[i] = retrieved_event
+            retrieved_fut = ctx.loop.create_future()
+            ctx.tramp.set_future_name(retrieved_fut, name=f"Retrieved({i})")
+            retrieved[i] = retrieved_fut
+
+            def announce(i: int, res: hp.protocols.FutureStatus[None]) -> None:
+                ctx.tramp.log_info(f"FUTURE_DOMINOES: future {i} retrieved")
+
+            retrieved[i].add_done_callback(functools.partial(announce, i))
 
             fut: asyncio.Future[None] = ctx.loop.create_future()
-            requirements.append((retrieved_event, fut))
+            requirements.append((retrieved_fut, fut))
             ctx.tramp.set_future_name(fut, name=f"Domino[{i}]")
             futs[i] = _Domino(
                 _ctx=ctx,
@@ -368,16 +386,13 @@ class _FutureDominoes[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
                 _fut=fut,
             )
 
-        on_retrieved_futs: set[asyncio.Future[None]] = set()
-
         instance = cls(
             ctx=ctx,
             started=started,
-            finished=asyncio.Event(),
+            finished=finished,
             expected=expected,
             futs=futs,
             retrieved=retrieved,
-            on_retrieved=on_retrieved_futs,
         )
 
         def finished_on_ctx_done(res: hp.protocols.FutureStatus[None]) -> None:
@@ -385,32 +400,26 @@ class _FutureDominoes[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
 
         ctx.add_done_callback(finished_on_ctx_done)
 
-        def on_fut_done(i: int, res: hp.protocols.FutureStatus[None]) -> None:
-            ctx.tramp.log_info(f"FUTURE_DOMINOES: future {i} done")
-            if i == expected:
-                ctx.tramp.log_info("FUTURE_DOMINOES: all knocked over")
-                instance.finished.set()
-                return
+        async def knock() -> None:
+            await started.wait()
 
-            if not futs[i + 1].done():
+            for i, (retrieved, fut) in enumerate(requirements):
+                await retrieved
+                ctx.loop.call_soon(fut.set_result, None)
+                await fut
+                ctx.tramp.log_info(f"FUTURE_DOMINOES: future {i + 1} done")
+                await instance._allow_real_loop()
 
-                def set_next(res: hp.protocols.FutureStatus[None]) -> None:
-                    ctx.loop.call_soon(futs[i + 1].set_result, None)
+            ctx.tramp.log_info("FUTURE_DOMINOES: all knocked over")
+            finished.set()
 
-                on_retrieved = ctx.fut_from_event(retrieved[i + 1], name=f"on_retrieved({i + 1})")
-                on_retrieved.add_done_callback(set_next)
-                on_retrieved_futs.add(on_retrieved)
-
-        for i, domino in futs.items():
-            domino.add_done_callback(functools.partial(on_fut_done, i))
-
+        task_holder.add(knock())
         return instance
 
     def begin(self) -> None:
-        self.futs[1].set_result(None)
         self.started.set()
 
-    async def check_finished(self) -> None:
+    def check_finished(self) -> None:
         not_done: set[int] = set()
         for i, fut in self.futs.items():
             if not fut.done():
@@ -418,13 +427,8 @@ class _FutureDominoes[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
 
         not_retrieved: set[int] = set()
         for i, retrieved in self.retrieved.items():
-            if not retrieved.is_set():
+            if not retrieved.done():
                 not_retrieved.add(i)
-
-        for domino in self.on_retrieved:
-            domino.cancel()
-
-        await self.ctx.wait_for_all_futures(*list(self.on_retrieved))
 
         if not_retrieved:
             raise AssertionError(f"Not all the futures were accessed: {not_retrieved}")
@@ -433,8 +437,18 @@ class _FutureDominoes[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
             raise AssertionError(f"Not all the futures were completed: {not_done}")
 
     def __getitem__(self, num: int) -> Domino:
-        self.retrieved[num].set()
+        if not self.retrieved[num].done():
+            self.retrieved[num].set_result(None)
         return self.futs[num]
+
+    async def _allow_real_loop(self) -> None:
+        while (
+            len(
+                self.ctx.loop._ready  # type: ignore[attr-defined]
+            )
+            > 0
+        ):
+            await asyncio.sleep(0)
 
 
 @contextlib.asynccontextmanager
@@ -519,11 +533,13 @@ async def future_dominoes(
     tramp: hp.protocols.Tramp = hp.Tramp(log=log)
     ctx = hp.CTX.beginning(loop=loop, name="::", tramp=tramp)
 
-    dominoes = _FutureDominoes.create(ctx=ctx, expected=expected)
-    try:
-        yield dominoes
-    finally:
-        await dominoes.check_finished()
+    with ctx.child(name="task_holder") as ctx_taskholder:
+        async with hp.TaskHolder(ctx=ctx_taskholder) as task_holder:
+            with ctx_taskholder.child(name="dominoes") as dominoes_ctx:
+                with _FutureDominoes.create(
+                    ctx=dominoes_ctx, task_holder=task_holder, expected=expected
+                ) as dominoes:
+                    yield dominoes
 
 
 if TYPE_CHECKING:
