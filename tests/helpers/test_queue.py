@@ -27,42 +27,42 @@ class TestQueue:
 
         assert queue._stop_waiter in queue.ctx._callbacks
 
-        assert isinstance(queue.collection, deque)
+        assert isinstance(queue._collection, deque)
 
-        assert not queue.waiter.is_set()
+        assert not queue._waiter.is_set()
 
     async def test_can_stop_the_waiter_on_done(self, ctx: hp.CTX) -> None:
         queue = hp.Queue(ctx=ctx)
 
-        assert not queue.waiter.is_set()
+        assert not queue._waiter.is_set()
 
         ctx.cancel()
         await asyncio.sleep(0.001)
 
-        assert queue.waiter.is_set()
+        assert queue._waiter.is_set()
 
         # And if the waiter was already done
         queue = hp.Queue(ctx=ctx)
 
-        queue.waiter.set()
+        queue._waiter.set()
 
         ctx.cancel()
         await asyncio.sleep(0.001)
 
-        assert queue.waiter.is_set()
+        assert queue._waiter.is_set()
 
     async def test_can_get_remaining_items(self, ctx: hp.CTX) -> None:
         queue = hp.Queue(ctx=ctx)
-        assert not queue.waiter.is_set()
+        assert not queue._waiter.is_set()
 
         queue.append(1)
-        assert queue.waiter.is_set()
+        assert queue._waiter.is_set()
 
         queue.append(2)
 
         assert list(queue.remaining()) == [1, 2]
 
-        assert not queue.collection
+        assert not queue._collection
 
     class TestGettingAllResults:
         async def test_can_get_results_until_ctx_is_done(
@@ -273,7 +273,7 @@ class TestQueue:
                 queue.append(i)
 
             def sneaky_stop(queue: hp.Queue) -> None:
-                if len(queue.collection) == 3:
+                if len(queue._collection) == 3:
                     queue.append(40)
                     queue.ctx.cancel()
                     found.append("sneaky_stop")
@@ -284,7 +284,7 @@ class TestQueue:
                 found.append(item)
                 found.append("-")
 
-            assert list(queue.collection) == [7, 8, 9, 40]
+            assert list(queue._collection) == [7, 8, 9, 40]
             assert found == [0, "-", 1, "-", 2, "-", 3, "-", 4, "-", 5, "-", 6, "-", "sneaky_stop"]
 
 
@@ -295,7 +295,7 @@ class TestSyncQueue:
         assert all(f in queue.ctx.futs for f in ctx.futs)
         assert queue.timeout == 0.05
 
-        assert isinstance(queue.collection, NormalQueue)
+        assert isinstance(queue._collection, NormalQueue)
 
         queue = hp.SyncQueue(ctx=ctx, timeout=1)
         assert queue.timeout == 1
@@ -328,7 +328,7 @@ class TestSyncQueue:
         queue.append(2)
 
         assert list(queue.remaining()) == [1, 2]
-        assert queue.collection.empty()
+        assert queue._collection.empty()
 
     class TestGettingAllResults:
         async def test_can_get_results_until_ctx_is_done(

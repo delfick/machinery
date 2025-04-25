@@ -37,10 +37,13 @@ class SyncQueue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     ctx: _context.CTX[T_Tramp]
     timeout: float = 0.05
     empty_on_finished: bool = False
-    collection: stdqueue.Queue[T_Item] = dataclasses.field(default_factory=stdqueue.Queue)
+
+    _collection: stdqueue.Queue[T_Item] = dataclasses.field(
+        default_factory=stdqueue.Queue, init=False
+    )
 
     def append(self, item: T_Item) -> None:
-        self.collection.put(item)
+        self._collection.put(item)
 
     def __iter__(self) -> Iterator[T_Item]:
         return iter(self.get_all())
@@ -51,7 +54,7 @@ class SyncQueue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
                 break
 
             try:
-                nxt = self.collection.get(timeout=self.timeout)
+                nxt = self._collection.get(timeout=self.timeout)
             except stdqueue.Empty:
                 continue
             else:
@@ -66,8 +69,8 @@ class SyncQueue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
     def remaining(self) -> Iterator[T_Item]:
         while True:
-            if not self.collection.empty():
-                yield self.collection.get(block=False)
+            if not self._collection.empty():
+                yield self._collection.get(block=False)
             else:
                 break
 
@@ -107,39 +110,42 @@ class Queue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
     ctx: _context.CTX[T_Tramp]
     empty_on_finished: bool = False
-    waiter: asyncio.Event = dataclasses.field(default_factory=asyncio.Event)
-    collection: collections.deque[T_Item] = dataclasses.field(default_factory=collections.deque)
-    after_yielded: list[Callable[["Queue[T_Item,T_Tramp]"], None]] = dataclasses.field(
-        default_factory=list
+
+    _waiter: asyncio.Event = dataclasses.field(default_factory=asyncio.Event, init=False)
+    _collection: collections.deque[T_Item] = dataclasses.field(
+        default_factory=collections.deque, init=False
+    )
+    _after_yielded: list[Callable[["Queue[T_Item,T_Tramp]"], None]] = dataclasses.field(
+        default_factory=list, init=False
     )
 
     def __post_init__(self) -> None:
         self.ctx.add_done_callback(self._stop_waiter)
 
     def _stop_waiter(self, res: _protocols.FutureStatus[None]) -> None:
-        self.waiter.set()
+        self._waiter.set()
 
     def process_after_yielded(
         self, process: Callable[["Queue[T_Item, T_Tramp]"], None], /
     ) -> None:
-        self.after_yielded.append(process)
+        self._after_yielded.append(process)
 
     def append(self, item: T_Item, *, priority: bool = False) -> None:
         if priority:
-            self.collection.insert(0, item)
+            self._collection.insert(0, item)
         else:
-            self.collection.append(item)
-        self.waiter.set()
+            self._collection.append(item)
+        self._waiter.set()
 
     def __aiter__(self) -> AsyncGenerator[T_Item]:
         return self.get_all()
 
     async def get_all(self) -> AsyncGenerator[T_Item]:
-        if not self.collection:
-            self.waiter.clear()
+        if not self._collection:
+            self._waiter.clear()
 
         while True:
-            task = self.ctx.loop.create_task(self.waiter.wait())
+            task = self.ctx.loop.create_task(self._waiter.wait())
             try:
                 await self.ctx.wait_for_first_future(self.ctx, task)
             finally:
@@ -149,24 +155,24 @@ class Queue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
             if self.ctx.done() and not self.empty_on_finished:
                 break
 
-            if self.ctx.done() and not self.collection:
+            if self.ctx.done() and not self._collection:
                 break
 
-            if not self.collection:
+            if not self._collection:
                 continue
 
-            nxt = self.collection.popleft()
+            nxt = self._collection.popleft()
             if nxt is self.Done:
                 break
 
-            if not self.collection:
-                self.waiter.clear()
+            if not self._collection:
+                self._waiter.clear()
 
             yield nxt
 
-            for process in self.after_yielded:
+            for process in self._after_yielded:
                 process(self)
 
     def remaining(self) -> Iterator[T_Item]:
-        while self.collection:
-            yield self.collection.popleft()
+        while self._collection:
+            yield self._collection.popleft()
