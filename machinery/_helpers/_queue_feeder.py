@@ -349,7 +349,7 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
     def _process_queue_after_yielded(
         self, queue: _queue.Queue[QueueManagerResult[T_QueueContext], T_Tramp]
     ) -> None:
-        if not self.sources and self.finished_if_empty_sources.is_set() and not queue._collection:
+        if not self.sources and self.finished_if_empty_sources.is_set() and queue.is_empty():
             self._send_stop()
 
 

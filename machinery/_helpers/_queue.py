@@ -42,6 +42,12 @@ class SyncQueue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         default_factory=stdqueue.Queue, init=False
     )
 
+    def is_empty(self) -> bool:
+        return self._collection.empty()
+
+    def __len__(self) -> int:
+        return self._collection.qsize()
+
     def append(self, item: T_Item) -> None:
         self._collection.put(item)
 
@@ -124,6 +130,12 @@ class Queue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
     def _stop_waiter(self, res: _protocols.FutureStatus[None]) -> None:
         self._waiter.set()
+
+    def is_empty(self) -> bool:
+        return len(self._collection) == 0
+
+    def __len__(self) -> int:
+        return len(self._collection)
 
     def process_after_yielded(
         self, process: Callable[["Queue[T_Item, T_Tramp]"], None], /

@@ -62,7 +62,7 @@ class TestQueue:
 
         assert list(queue.remaining()) == [1, 2]
 
-        assert not queue._collection
+        assert queue.is_empty()
 
     class TestGettingAllResults:
         async def test_can_get_results_until_ctx_is_done(
@@ -273,7 +273,7 @@ class TestQueue:
                 queue.append(i)
 
             def sneaky_stop(queue: hp.Queue) -> None:
-                if len(queue._collection) == 3:
+                if len(queue) == 3:
                     queue.append(40)
                     queue.ctx.cancel()
                     found.append("sneaky_stop")
@@ -284,7 +284,7 @@ class TestQueue:
                 found.append(item)
                 found.append("-")
 
-            assert list(queue._collection) == [7, 8, 9, 40]
+            assert list(queue.remaining()) == [7, 8, 9, 40]
             assert found == [0, "-", 1, "-", 2, "-", 3, "-", 4, "-", 5, "-", 6, "-", "sneaky_stop"]
 
 
@@ -328,7 +328,7 @@ class TestSyncQueue:
         queue.append(2)
 
         assert list(queue.remaining()) == [1, 2]
-        assert queue._collection.empty()
+        assert queue.is_empty()
 
     class TestGettingAllResults:
         async def test_can_get_results_until_ctx_is_done(
