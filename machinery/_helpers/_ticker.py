@@ -4,7 +4,6 @@ import dataclasses
 import sys
 import time
 from collections.abc import AsyncGenerator
-from typing import Protocol
 
 from . import (
     _context,
@@ -12,15 +11,6 @@ from . import (
     _protocols,
     _task_holder,
 )
-
-
-class Ticker(Protocol):
-    @property
-    def pauser(self) -> asyncio.Semaphore | None: ...
-
-    def __aiter__(self) -> AsyncGenerator[tuple[int, float]]: ...
-
-    def change_after(self, every: int, *, set_new_every: bool = True) -> None: ...
 
 
 class _Stop(Exception):
@@ -182,7 +172,7 @@ async def tick[T_Tramp: _protocols.Tramp = _protocols.Tramp](
     min_wait: float = 0.1,
     name: str | None = None,
     pauser: asyncio.Semaphore | None = None,
-) -> AsyncGenerator[Ticker]:
+) -> AsyncGenerator[_protocols.Ticker]:
     """
     This object gives you an async generator that yields every ``every``
     seconds, taking into account how long it takes for your code to finish

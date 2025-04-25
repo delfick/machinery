@@ -138,6 +138,15 @@ class Streamer[T_Item](Protocol):
     def remaining(self) -> Iterator[T_Item]: ...
 
 
+class Ticker(Protocol):
+    @property
+    def pauser(self) -> asyncio.Semaphore | None: ...
+
+    def __aiter__(self) -> AsyncGenerator[tuple[int, float]]: ...
+
+    def change_after(self, every: int, *, set_new_every: bool = True) -> None: ...
+
+
 if TYPE_CHECKING:
     _FS: FutureStatus[None] = cast(asyncio.Future[None], None)
     _WBC: WaitByCallback[None] = cast(asyncio.Future[None], None)
