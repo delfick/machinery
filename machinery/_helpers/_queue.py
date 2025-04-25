@@ -1,12 +1,13 @@
 import asyncio
 import collections
+import dataclasses
 import queue as stdqueue
-import types
 from collections.abc import AsyncGenerator, Callable, Iterator
 
 from . import _context, _protocols
 
 
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class SyncQueue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     """
     A simple wrapper around the standard library non async queue.
@@ -17,42 +18,29 @@ class SyncQueue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
         from machinery import helpers as hp
 
-        queue = hp.SyncQueue()
+        ctx: hp.CTX = ...
 
-        async def results():
-            for result in queue:
-                print(result)
+        with ctx.child("SyncQueue") as ctx_sync_queue:
 
-        ...
+            queue = hp.SyncQueue(ctx=ctx_sync_queue)
 
-        queue.append(something)
-        queue.append(another)
+            async def results():
+                for result in queue:
+                    print(result)
+
+            ...
+
+            queue.append(something)
+            queue.append(another)
     """
 
-    def __init__(
-        self,
-        *,
-        ctx: _context.CTX[T_Tramp],
-        timeout: float = 0.05,
-        empty_on_finished: bool = False,
-        name: str | None = None,
-    ) -> None:
-        self.name = name
-        self.timeout = timeout
-        self.collection: stdqueue.Queue[T_Item] = stdqueue.Queue()
-        self.ctx = ctx.child(name=f"SyncQueue({self.name})::__init__[ctx]")
-        self.empty_on_finished = empty_on_finished
+    ctx: _context.CTX[T_Tramp]
+    timeout: float = 0.05
+    empty_on_finished: bool = False
+    collection: stdqueue.Queue[T_Item] = dataclasses.field(default_factory=stdqueue.Queue)
 
     def append(self, item: T_Item) -> None:
         self.collection.put(item)
-
-    async def finish(
-        self,
-        exc_typ: type[BaseException] | None = None,
-        exc: BaseException | None = None,
-        tb: types.TracebackType | None = None,
-    ) -> None:
-        self.ctx.cancel()
 
     def __iter__(self) -> Iterator[T_Item]:
         return iter(self.get_all())
@@ -84,6 +72,7 @@ class SyncQueue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
                 break
 
 
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class Queue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     """
     A custom async queue class.
@@ -95,17 +84,19 @@ class Queue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         from machinery import helpers as hp
 
         ctx: hp.CTX = ...
-        queue = hp.Queue(ctx=ctx)
 
-        async def results():
-            # This will continue forever until ctx is done
-            async for result in queue:
-                print(result)
+        with ctx.child(name="Queue") as ctx_queue:
+            queue = hp.Queue(ctx=ctx_queue)
 
-        ...
+            async def results():
+                # This will continue forever until ctx is done
+                async for result in queue:
+                    print(result)
 
-        queue.append(something)
-        queue.append(another)
+            ...
+
+            queue.append(something)
+            queue.append(another)
 
     Note that the main difference between this and the standard library
     asyncio.Queue is that this one does not have the ability to impose limits.
@@ -114,21 +105,15 @@ class Queue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     class Done:
         pass
 
-    def __init__(
-        self,
-        *,
-        ctx: _context.CTX[T_Tramp],
-        empty_on_finished: bool = False,
-        name: str | None = None,
-    ) -> None:
-        self.name = name
-        self.collection: collections.deque[T_Item] = collections.deque()
-        self.ctx = ctx.child(name=f"Queue({self.name})::__init__[ctx]")
-        self.waiter = asyncio.Event()
-        self.empty_on_finished = empty_on_finished
-        self.after_yielded: list[Callable[[Queue[T_Item, T_Tramp]], None]] = []
+    ctx: _context.CTX[T_Tramp]
+    empty_on_finished: bool = False
+    waiter: asyncio.Event = dataclasses.field(default_factory=asyncio.Event)
+    collection: collections.deque[T_Item] = dataclasses.field(default_factory=collections.deque)
+    after_yielded: list[Callable[["Queue[T_Item,T_Tramp]"], None]] = dataclasses.field(
+        default_factory=list
+    )
 
-        self.stop = False
+    def __post_init__(self) -> None:
         self.ctx.add_done_callback(self._stop_waiter)
 
     def _stop_waiter(self, res: _protocols.FutureStatus[None]) -> None:
@@ -138,14 +123,6 @@ class Queue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         self, process: Callable[["Queue[T_Item, T_Tramp]"], None], /
     ) -> None:
         self.after_yielded.append(process)
-
-    async def finish(
-        self,
-        exc_typ: type[BaseException] | None = None,
-        exc: BaseException | None = None,
-        tb: types.TracebackType | None = None,
-    ) -> None:
-        self.ctx.cancel()
 
     def append(self, item: T_Item, *, priority: bool = False) -> None:
         if priority:
