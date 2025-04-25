@@ -5,12 +5,7 @@ import sys
 import time
 from collections.abc import AsyncGenerator
 
-from . import (
-    _context,
-    _futures,
-    _protocols,
-    _task_holder,
-)
+from . import _context, _futures, _protocols
 
 
 class _Stop(Exception):
@@ -21,6 +16,7 @@ class _Stop(Exception):
 class _TickerOptions[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     ctx: _context.CTX[T_Tramp]
     every: int
+    max_time_reached: _protocols.WaitByCallback[None]
 
     max_iterations: int | None = None
     max_time: int | None = None
@@ -35,13 +31,12 @@ class _TickerOptions[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     async def tick(self) -> AsyncGenerator[tuple[int, float]]:
         final_handle = None
         if self.max_time:
-            final_handle = self.ctx.loop.call_later(self.max_time, self.ctx.cancel)
+            final_handle = self.ctx.loop.call_later(self.max_time, self.max_time_reached.cancel)
 
         try:
             async for info in self._tick():
                 yield info
         finally:
-            self.ctx.cancel()
             if final_handle:
                 final_handle.cancel()
             self._change_handle()
@@ -79,22 +74,25 @@ class _TickerOptions[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     async def _wait_for_next(self) -> None:
         pauser = self.pauser
 
-        if pauser is None or not pauser.locked():
-            task = self.ctx.loop.create_task(self.waiter.wait())
+        if pauser is not None and pauser.locked():
+
+            async def pause() -> None:
+                async with pauser:
+                    pass
+
+            task = self.ctx.async_as_background(pause())
             try:
-                return await self.ctx.wait_for_first_future(self.ctx, task)
+                await self.ctx.wait_for_first_future(task, self.ctx)
             finally:
                 task.cancel()
                 await self.ctx.wait_for_all_futures(task)
 
-        async def pause() -> None:
-            async with pauser:
-                pass
-
-        with self.ctx.child(name="_wait_for_next[with_pause]") as ts_ctx:
-            async with _task_holder.TaskHolder(ctx=ts_ctx) as ts:
-                ts.add(pause())
-                ts.add(self.waiter.wait())
+        wait_task = self.ctx.loop.create_task(self.waiter.wait())
+        try:
+            return await self.ctx.wait_for_first_future(self.ctx, wait_task, self.max_time_reached)
+        finally:
+            wait_task.cancel()
+            await self.ctx.wait_for_all_futures(wait_task)
 
     async def _tick(self) -> AsyncGenerator[tuple[int, float]]:
         start = time.time()
@@ -108,6 +106,9 @@ class _TickerOptions[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
             self.waiter.clear()
             if self.ctx.done():
+                return
+
+            if self.max_time_reached.done():
                 return
 
             if self.max_iterations is not None and iteration >= self.max_iterations:
@@ -251,9 +252,13 @@ async def tick[T_Tramp: _protocols.Tramp = _protocols.Tramp](
         If not None, we use this as a semaphore in an async with to pause the ticks
     """
     with ctx.child(name="Ticker") as ctx_ticker:
+        max_time_reached = ctx.loop.create_future()
+        ctx.tramp.set_future_name(max_time_reached, name=f"{ctx_ticker.name}::[max_time_reached]")
+
         options = _TickerOptions(
             every=every,
             ctx=ctx_ticker,
+            max_time_reached=max_time_reached,
             max_iterations=max_iterations,
             max_time=max_time,
             min_wait=min_wait,
@@ -269,3 +274,5 @@ async def tick[T_Tramp: _protocols.Tramp = _protocols.Tramp](
                 await _futures.stop_async_generator(gen, exc=exc_info[1] or _Stop())
             except _Stop:
                 pass
+            finally:
+                max_time_reached.cancel()
