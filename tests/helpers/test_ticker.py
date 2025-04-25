@@ -170,7 +170,7 @@ class TestTicker:
     ) -> None:
         called = []
 
-        async with hp.Ticker(3, ctx=ctx) as ticks:
+        async with hp.tick(3, ctx=ctx) as ticks:
             async for i, nxt in ticks:
                 called.append((i, nxt, time.time()))
 
@@ -205,7 +205,7 @@ class TestTicker:
     ) -> None:
         called = []
 
-        async with hp.Ticker(3, ctx=ctx) as ticks:
+        async with hp.tick(3, ctx=ctx) as ticks:
             async for i, nxt in ticks:
                 called.append((i, nxt, time.time()))
 
@@ -223,7 +223,7 @@ class TestTicker:
     ) -> None:
         called = []
 
-        async with hp.Ticker(5, ctx=ctx, min_wait=2) as ticks:
+        async with hp.tick(5, ctx=ctx, min_wait=2) as ticks:
             async for i, nxt in ticks:
                 called.append((i, nxt, time.time()))
 
@@ -241,7 +241,7 @@ class TestTicker:
     ) -> None:
         called = []
 
-        async with hp.Ticker(5, ctx=ctx, min_wait=False) as ticks:
+        async with hp.tick(5, ctx=ctx, min_wait=False) as ticks:
             async for i, nxt in ticks:
                 called.append((i, nxt, time.time()))
 
@@ -275,7 +275,7 @@ class TestTicker:
 
             pauser = asyncio.Semaphore()
 
-            async with hp.Ticker(5, ctx=ctx, min_wait=False, pauser=pauser) as ticks:
+            async with hp.tick(5, ctx=ctx, min_wait=False, pauser=pauser) as ticks:
                 async for i, nxt in ticks:
                     called.append((i, nxt, time.time()))
 
@@ -306,13 +306,13 @@ class TestTicker:
 
             pauser = asyncio.Semaphore()
 
-            async with hp.Ticker(5, ctx=ctx, min_wait=False, pauser=pauser) as ticks:
+            async with hp.tick(5, ctx=ctx, min_wait=False, pauser=pauser) as ticks:
                 async for i, nxt in ticks:
                     called.append((i, nxt, time.time()))
 
                     if len(called) == 2:
                         await pauser.acquire()
-                        loop.call_later(14, ticks.ctx.cancel)
+                        loop.call_later(14, ctx.cancel)
 
             assert time.time() == 19
 

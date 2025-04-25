@@ -7,7 +7,6 @@ from . import _protocols
 async def stop_async_generator[T_Send](
     gen: AsyncGenerator[object, T_Send | None],
     provide: T_Send | None = None,
-    name: str | None = None,
     exc: BaseException | None = None,
 ) -> None:
     try:

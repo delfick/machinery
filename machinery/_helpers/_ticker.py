@@ -1,11 +1,12 @@
 import asyncio
+import contextlib
+import dataclasses
+import sys
 import time
-import types
 from collections.abc import AsyncGenerator
-from typing import Self
+from typing import Protocol
 
 from . import (
-    _async_mixin,
     _context,
     _futures,
     _protocols,
@@ -13,155 +14,33 @@ from . import (
 )
 
 
-class Ticker[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
-    """
-    This object gives you an async generator that yields every ``every``
-    seconds, taking into account how long it takes for your code to finish
-    for the next yield.
+class Ticker(Protocol):
+    @property
+    def pauser(self) -> asyncio.Semaphore | None: ...
 
-    For example:
+    def __aiter__(self) -> AsyncGenerator[tuple[int, float]]: ...
 
-    .. code-block:: python
-
-        from machinery import helpers as hp
-
-        import time
+    def change_after(self, every: int, *, set_new_every: bool = True) -> None: ...
 
 
-        start = time.time()
-        timing = []
-
-        async for _ in hp.Ticker(10):
-            timing.append(time.time() - start)
-            asyncio.sleep(8)
-            if len(timing) >= 5:
-                break
-
-        assert timing == [0, 10, 20, 30, 40]
-
-    The value that is yielded is a tuple of (iteration, time_till_next) where
-    ``iteration`` is a counter of how many times we yield a value starting from
-    1 and the ``time_till_next`` is the number of seconds till the next time we
-    yield a value.
-
-    You can use the shortcut :func:`tick` to create one of these, but if you
-    do create this yourself, you can change the ``every`` value while you're
-    iterating.
-
-    .. code-block:: python
-
-        from machinery import helpers as hp
+class _Stop(Exception):
+    pass
 
 
-        ticker = hp.Ticker(10)
+@dataclasses.dataclass(kw_only=True)
+class _TickerOptions[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
+    ctx: _context.CTX[T_Tramp]
+    every: int
 
-        done = 0
+    max_iterations: int | None = None
+    max_time: int | None = None
+    min_wait: float = 0.1
+    pauser: asyncio.Semaphore | None = None
 
-        async with ticker as ticks:
-            async for _ in ticks:
-                done += 1
-                if done == 3:
-                    # This will mean the next tick will be 20 seconds after the last
-                    # tick and future ticks will be 20 seconds apart
-                    ticker.change_after(20)
-                elif done == 5:
-                    # This will mean the next tick will be 40 seconds after the last
-                    # tick, but ticks after that will go back to 20 seconds apart.
-                    ticker.change_after(40, set_new_every=False)
+    handle: asyncio.Handle | None = None
+    expected: float | None = None
 
-    There are three other options:
-
-    ctx
-        If this future is completed then the iteration will stop
-
-    max_iterations
-        Iterations after this number will cause the loop to finish. By default
-        there is no limit
-
-    max_time
-        After this many iterations the loop will stop. By default there is no
-        limit
-
-    min_wait
-        The minimum amount of time to wait after a tick.
-
-        If this is False then we will always just tick at the next expected time,
-        otherwise we ensure this amount of time at a minimum between ticks
-
-    pauser
-        If not None, we use this as a semaphore in an async with to pause the ticks
-    """
-
-    async def __aexit__(
-        self,
-        exc_type: type[BaseException] | None = None,
-        exc: BaseException | None = None,
-        tb: types.TracebackType | None = None,
-    ) -> None:
-        return await self.finish(exc_type, exc, tb)
-
-    async def __aenter__(self) -> Self:
-        async with _async_mixin.ensure_aexit(self):
-            return await self.start()
-
-    class Stop(Exception):
-        pass
-
-    def __init__(
-        self,
-        every: int,
-        *,
-        ctx: _context.CTX[T_Tramp],
-        max_iterations: int | None = None,
-        max_time: int | None = None,
-        min_wait: float = 0.1,
-        pauser: asyncio.Semaphore | None = None,
-        name: str | None = None,
-    ) -> None:
-        self.name = name
-        self.every = every
-        self.pauser = pauser
-        self.max_time = max_time
-        self.min_wait = min_wait
-        self.max_iterations = max_iterations
-
-        if self.every <= 0:
-            self.every = 0
-            if self.min_wait is False:
-                self.min_wait = 0
-
-        self.handle: asyncio.Handle | None = None
-        self.expected: float | None = None
-
-        self.ctx = ctx.child(name=f"Ticker({self.name})::__init__[ctx]")
-        self.waiter = asyncio.Event()
-
-    async def start(self) -> Self:
-        self.gen = self.tick()
-        return self
-
-    def __aiter__(self) -> AsyncGenerator[tuple[int, float]]:
-        if not hasattr(self, "gen"):
-            raise Exception(
-                "The ticker must be used as a context manager before being used as an async iterator"
-            )
-        return self.gen
-
-    async def finish(
-        self,
-        exc_typ: type[BaseException] | None = None,
-        exc: BaseException | None = None,
-        tb: types.TracebackType | None = None,
-    ) -> None:
-        if hasattr(self, "gen"):
-            try:
-                await _futures.stop_async_generator(
-                    self.gen, exc=exc or self.Stop(), name=f"Ticker({self.name})::stop[stop_gen]"
-                )
-            except self.Stop:
-                pass
-
-        self.ctx.cancel()
+    waiter: asyncio.Event = dataclasses.field(default_factory=asyncio.Event)
 
     async def tick(self) -> AsyncGenerator[tuple[int, float]]:
         final_handle = None
@@ -222,7 +101,7 @@ class Ticker[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
             async with pauser:
                 pass
 
-        with self.ctx.child(name=f"Ticker({self.name})::_wait_for_next[with_pause]") as ts_ctx:
+        with self.ctx.child(name="_wait_for_next[with_pause]") as ts_ctx:
             async with _task_holder.TaskHolder(ctx=ts_ctx) as ts:
                 ts.add(pause())
                 ts.add(self.waiter.wait())
@@ -277,7 +156,24 @@ class Ticker[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
                 yield iteration, max([diff, 0])
 
 
-def tick[T_Tramp: _protocols.Tramp = _protocols.Tramp](
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class _Ticker[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
+    _options: _TickerOptions[T_Tramp]
+    _gen: AsyncGenerator[tuple[int, float]]
+
+    @property
+    def pauser(self) -> asyncio.Semaphore | None:
+        return self._options.pauser
+
+    def __aiter__(self) -> AsyncGenerator[tuple[int, float]]:
+        return self._gen
+
+    def change_after(self, every: int, *, set_new_every: bool = True) -> None:
+        self._options.change_after(every, set_new_every=set_new_every)
+
+
+@contextlib.asynccontextmanager
+async def tick[T_Tramp: _protocols.Tramp = _protocols.Tramp](
     every: int,
     *,
     ctx: _context.CTX[T_Tramp],
@@ -286,31 +182,100 @@ def tick[T_Tramp: _protocols.Tramp = _protocols.Tramp](
     min_wait: float = 0.1,
     name: str | None = None,
     pauser: asyncio.Semaphore | None = None,
-) -> Ticker[T_Tramp]:
+) -> AsyncGenerator[Ticker]:
     """
+    This object gives you an async generator that yields every ``every``
+    seconds, taking into account how long it takes for your code to finish
+    for the next yield.
+
+    For example:
+
     .. code-block:: python
 
         from machinery import helpers as hp
 
+        import time
 
-        async with hp.tick(every) as ticks:
-            async for i in ticks:
-                yield i
 
-        # Is a nicer way of saying
+        start = time.time()
+        timing = []
 
-        async for i in hp.Ticker(every):
-            yield i
+        ctx: hp.CTX = ...
 
-    If you want control of the ticker during the iteration, then use
-    :class:`Ticker` directly.
+        async with hp.tick(10, ctx=ctx) as ticker:
+            async for _ in ticker:
+                timing.append(time.time() - start)
+                asyncio.sleep(8)
+                if len(timing) >= 5:
+                    break
+
+        assert timing == [0, 10, 20, 30, 40]
+
+    The value that is yielded is a tuple of (iteration, time_till_next) where
+    ``iteration`` is a counter of how many times we yield a value starting from
+    1 and the ``time_till_next`` is the number of seconds till the next time we
+    yield a value.
+
+    Note that the every value can be changed during iteration:
+
+    .. code-block:: python
+
+        from machinery import helpers as hp
+
+        ctx: hp.CTX = ...
+
+        async with hp.tick(10, ctx=ctx) as ticker:
+            done = 0
+
+            async for _ in ticker:
+                done += 1
+                if done == 3:
+                    # This will mean the next tick will be 20 seconds after the last
+                    # tick and future ticks will be 20 seconds apart
+                    ticker.change_after(20)
+                elif done == 5:
+                    # This will mean the next tick will be 40 seconds after the last
+                    # tick, but ticks after that will go back to 20 seconds apart.
+                    ticker.change_after(40, set_new_every=False)
+
+    There are other options:
+
+    ctx
+        If this ctx is completed then the iteration will stop
+
+    max_iterations
+        Iterations after this number will cause the loop to finish. By default
+        there is no limit
+
+    max_time
+        After this many iterations the loop will stop. By default there is no
+        limit
+
+    min_wait
+        The minimum amount of time to wait after a tick.
+
+        If this is False then we will always just tick at the next expected time,
+        otherwise we ensure this amount of time at a minimum between ticks
+
+    pauser
+        If not None, we use this as a semaphore in an async with to pause the ticks
     """
-    return Ticker(
-        every,
-        ctx=ctx,
-        max_iterations=max_iterations,
-        max_time=max_time,
-        min_wait=min_wait,
-        pauser=pauser,
-        name=f"||tick({name})",
-    )
+    with ctx.child(name="Ticker") as ctx_ticker:
+        options = _TickerOptions(
+            every=every,
+            ctx=ctx_ticker,
+            max_iterations=max_iterations,
+            max_time=max_time,
+            min_wait=min_wait,
+            pauser=pauser,
+        )
+
+        gen = options.tick()
+        try:
+            yield _Ticker(_options=options, _gen=gen)
+        finally:
+            exc_info = sys.exc_info()
+            try:
+                await _futures.stop_async_generator(gen, exc=exc_info[1] or _Stop())
+            except _Stop:
+                pass
