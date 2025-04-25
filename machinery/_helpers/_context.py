@@ -384,7 +384,7 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
     def child(self, *, name: str) -> Self:
         final_future: asyncio.Future[None] = self.loop.create_future()
-        self.tramp.set_future_name(final_future, name=f"FUT{{{name}}}")
+        self.tramp.set_future_name(final_future, name=f"FUT{{{self.name}-->{name}}}")
         final_future.add_done_callback(self.tramp.silent_reporter)
 
         return dataclasses.replace(
