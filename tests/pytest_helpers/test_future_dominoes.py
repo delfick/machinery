@@ -20,8 +20,8 @@ def ctx() -> Iterator[hp.CTX]:
 
 @pytest.fixture
 async def task_holder(ctx: hp.CTX) -> AsyncGenerator[hp.TaskHolder]:
-    with ctx.child(name="task_holder") as ctx_taskholder:
-        async with hp.TaskHolder(ctx=ctx_taskholder) as task_holder:
+    with ctx.child(name="task_holder") as ctx_task_holder:
+        async with hp.TaskHolder(ctx=ctx_task_holder) as task_holder:
             yield task_holder
 
 

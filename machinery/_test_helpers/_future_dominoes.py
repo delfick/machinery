@@ -132,7 +132,7 @@ class _FutureDominoes[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
 
         for i in range(1, expected + 1):
             retrieved_fut = ctx.loop.create_future()
-            ctx.tramp.set_future_name(retrieved_fut, name=f"Retrieved({i})")
+            ctx.tramp.set_future_name(retrieved_fut, name=f"{ctx.name}-->[Retrieved({i})]")
             retrieved[i] = retrieved_fut
 
             def announce(i: int, res: hp.protocols.FutureStatus[None]) -> None:
@@ -142,7 +142,7 @@ class _FutureDominoes[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
 
             fut: asyncio.Future[None] = ctx.loop.create_future()
             requirements.append((retrieved_fut, fut))
-            ctx.tramp.set_future_name(fut, name=f"Domino[{i}]")
+            ctx.tramp.set_future_name(fut, name=f"{ctx.name}-->[Domino({i})]")
             futs[i] = _Domino(
                 _ctx=ctx,
                 _started=started,
@@ -222,6 +222,7 @@ async def future_dominoes(
     expected: int,
     loop: asyncio.AbstractEventLoop | None = None,
     log: logging.Logger | None = None,
+    name: str = "",
 ) -> AsyncGenerator[FutureDominoes]:
     """
     A helper to start a domino of futures.
@@ -298,11 +299,14 @@ async def future_dominoes(
     tramp: hp.protocols.Tramp = hp.Tramp(log=log)
     ctx = hp.CTX.beginning(loop=loop, name="::", tramp=tramp)
 
-    with ctx.child(name="task_holder") as ctx_taskholder:
-        async with hp.TaskHolder(ctx=ctx_taskholder) as task_holder:
-            with ctx_taskholder.child(name="dominoes") as dominoes_ctx:
+    if name:
+        name = f"[{name}]-->"
+
+    with ctx.child(name="{name}future_dominoes[task_holder]") as ctx_task_holder:
+        async with hp.TaskHolder(ctx=ctx_task_holder) as task_holder:
+            with ctx_task_holder.child(name="{name}future_dominoes[dominoes]") as ctx_dominoes:
                 with _FutureDominoes.create(
-                    ctx=dominoes_ctx, task_holder=task_holder, expected=expected
+                    ctx=ctx_dominoes, task_holder=task_holder, expected=expected
                 ) as dominoes:
                     yield dominoes
 

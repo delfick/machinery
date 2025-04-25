@@ -160,7 +160,7 @@ class _MockedCallLater:
 
 @contextlib.asynccontextmanager
 async def mocked_call_later(
-    *, ctx: hp.CTX | None = None, precision: float = 0.1, start_time: float = 0
+    *, ctx: hp.CTX | None = None, precision: float = 0.1, start_time: float = 0, name: str = ""
 ) -> AsyncGenerator[MockedCallLater]:
     if ctx is None:
         log = logging.getLogger()
@@ -168,7 +168,10 @@ async def mocked_call_later(
         tramp: hp.protocols.Tramp = hp.Tramp(log=log)
         ctx = hp.CTX.beginning(name="::", tramp=tramp)
 
-    with ctx.child(name="MockedCalllater") as ctx_mocked:
+    if name:
+        name = f"[{name}]-->"
+
+    with ctx.child(name=f"{name}mocked_call_later") as ctx_mocked:
         instance = _MockedCallLater(
             _ctx=ctx_mocked,
             _original_call_later=ctx.loop.call_later,
@@ -180,7 +183,7 @@ async def mocked_call_later(
             mock.patch("time.time", instance.time),
             mock.patch.object(ctx.loop, "call_later", instance.call_later),
         ):
-            with ctx_mocked.child(name="TaskHolder") as ctx_task_holder:
+            with ctx_mocked.child(name=f"{name}mocked_call_later[task_holder]") as ctx_task_holder:
                 async with hp.TaskHolder(ctx=ctx_task_holder) as task_holder:
                     task_holder.add(instance.run())
                     yield instance

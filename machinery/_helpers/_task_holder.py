@@ -24,8 +24,8 @@ class TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         async def something():
             await asyncio.sleep(5)
 
-        with ctx.child(name="TaskHolder") as ctx_taskholder:
-            with hp.TaskHolder(ctx=ctx_taskholder) as ts:
+        with ctx.child(name="TaskHolder") as ctx_task_holder:
+            with hp.TaskHolder(ctx=ctx_task_holder) as ts:
                 ts.add(something())
                 ts.add(something())
 
@@ -41,8 +41,8 @@ class TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         async def something():
             await asyncio.sleep(5)
 
-        ctx_taskholder = ctx.child(name="TaskHolder")
-        ts = hp.TaskHolder(ctx=ctx_taskholder)
+        ctx_task_holder = ctx.child(name="TaskHolder")
+        ts = hp.TaskHolder(ctx=ctx_task_holder)
 
         try:
             ts.add(something())

@@ -355,18 +355,21 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
 
 @contextlib.asynccontextmanager
 async def queue_manager[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp](
-    *, ctx: _context.CTX[T_Tramp], make_empty_context: Callable[[], T_QueueContext]
+    *, ctx: _context.CTX[T_Tramp], make_empty_context: Callable[[], T_QueueContext], name: str = ""
 ) -> AsyncGenerator[
     tuple[
         _protocols.Streamer[QueueManagerResult[T_QueueContext]],
         _protocols.QueueFeeder[T_QueueContext],
     ]
 ]:
-    with ctx.child(name="task_holder") as ctx_task_holder:
+    if name:
+        name = f"[{name}]-->"
+
+    with ctx.child(name=f"{name}queue_manager[task_holder]") as ctx_task_holder:
         async with _task_holder.TaskHolder(ctx=ctx_task_holder) as task_holder:
             with (
-                ctx_task_holder.child(name="streamer") as ctx_streamer,
-                ctx_task_holder.child(name="feeder") as ctx_feeder,
+                ctx_task_holder.child(name=f"{name}queue_manager[streamer]") as ctx_streamer,
+                ctx_task_holder.child(name=f"{name}queue_manager[feeder]") as ctx_feeder,
             ):
                 streamer = _queue.Queue[QueueManagerResult[T_QueueContext], T_Tramp](
                     ctx=ctx_streamer, empty_on_finished=True
