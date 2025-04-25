@@ -18,11 +18,11 @@ def ctx() -> Iterator[hp.CTX]:
 class TestQueueFeeder:
     async def test_it_can_feed_values(self, ctx: hp.CTX) -> None:
         got: list[object] = []
-        queue_manager = hp.QueueManager(ctx=ctx, make_empty_context=lambda: None)
 
-        async with hp.TaskHolder(ctx=ctx) as ts:
-            streamer, feeder = queue_manager.create_feeder(task_holder=ts)
-
+        async with hp.queue_manager(ctx=ctx, make_empty_context=lambda: None) as (
+            streamer,
+            feeder,
+        ):
             feeder.add_value(1)
             feeder.add_value(2)
 
@@ -54,11 +54,11 @@ class TestQueueFeeder:
         self, ctx: hp.CTX
     ) -> None:
         got: list[object] = []
-        queue_manager = hp.QueueManager(ctx=ctx, make_empty_context=lambda: None)
 
-        async with hp.TaskHolder(ctx=ctx) as ts:
-            streamer, feeder = queue_manager.create_feeder(task_holder=ts)
-
+        async with hp.queue_manager(ctx=ctx, make_empty_context=lambda: None) as (
+            streamer,
+            feeder,
+        ):
             feeder.add_value(1)
             feeder.add_value(2)
             feeder.set_as_finished_if_out_of_sources()
@@ -83,11 +83,11 @@ class TestQueueFeeder:
         self, ctx: hp.CTX
     ) -> None:
         got: list[object] = []
-        queue_manager = hp.QueueManager(ctx=ctx, make_empty_context=lambda: None)
 
-        async with hp.TaskHolder(ctx=ctx) as ts:
-            streamer, feeder = queue_manager.create_feeder(task_holder=ts)
-
+        async with hp.queue_manager(ctx=ctx, make_empty_context=lambda: None) as (
+            streamer,
+            feeder,
+        ):
             feeder.add_value(1)
             feeder.add_value(2)
             feeder.add_value(3)
@@ -98,7 +98,7 @@ class TestQueueFeeder:
                         got.append(value)
 
                         if value == 2:
-                            queue_manager.ctx.cancel()
+                            ctx.cancel()
                             feeder.add_value(4)
 
                     case hp.QueueManagerStopped():
@@ -111,11 +111,11 @@ class TestQueueFeeder:
 
     async def test_it_can_match_values_on_context(self, ctx: hp.CTX) -> None:
         got: list[object] = []
-        queue_manager = hp.QueueManager(ctx=ctx, make_empty_context=lambda: "")
 
-        async with hp.TaskHolder(ctx=ctx) as ts:
-            streamer, feeder = queue_manager.create_feeder(task_holder=ts)
-
+        async with hp.queue_manager(ctx=ctx, make_empty_context=lambda: "") as (
+            streamer,
+            feeder,
+        ):
             feeder.add_value(1, context="one")
             feeder.add_value(2, context="two")
 
