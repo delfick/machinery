@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 import types
 from collections.abc import Coroutine, Iterator
 from typing import Self
@@ -6,6 +7,7 @@ from typing import Self
 from . import _async_mixin, _context, _protocols
 
 
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     """
     An object for managing asynchronous coroutines.
@@ -22,9 +24,10 @@ class TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         async def something():
             await asyncio.sleep(5)
 
-        with hp.TaskHolder(ctx=ctx) as ts:
-            ts.add(something())
-            ts.add(something())
+        with ctx.child(name="TaskHolder") as ctx_taskholder:
+            with hp.TaskHolder(ctx=ctx_taskholder) as ts:
+                ts.add(something())
+                ts.add(something())
 
     If you don't want to use the context manager, you can say:
 
@@ -38,13 +41,15 @@ class TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         async def something():
             await asyncio.sleep(5)
 
-        ts = hp.TaskHolder(ctx=ctx)
+        ctx_taskholder = ctx.child(name="TaskHolder")
+        ts = hp.TaskHolder(ctx=ctx_taskholder)
 
         try:
             ts.add(something())
             ts.add(something())
         finally:
             await ts.finish()
+            ctx.cancel()
 
     Once your block in the context manager is done the context manager won't
     exit until all coroutines have finished. During this time you may still
@@ -81,14 +86,13 @@ class TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         async with _async_mixin.ensure_aexit(self):
             return await self.start()
 
-    def __init__(self, *, ctx: _context.CTX[T_Tramp], name: str | None = None) -> None:
-        self.name = name
+    ctx: _context.CTX[T_Tramp]
+    ts: list[_protocols.WaitByCallback[object]] = dataclasses.field(
+        default_factory=list, init=False
+    )
 
-        self.ts: list[_protocols.WaitByCallback[object]] = []
-        self.ctx = ctx.child(name=f"TaskHolder({self.name})::__init__[ctx]")
-
-        self._cleaner: asyncio.Task[None] | None = None
-        self._cleaner_waiter = asyncio.Event()
+    _cleaner: list[asyncio.Task[None]] = dataclasses.field(default_factory=list, init=False)
+    _cleaner_waiter: asyncio.Event = dataclasses.field(default_factory=asyncio.Event, init=False)
 
     def add[T_Ret](
         self, coro: Coroutine[object, object, T_Ret], *, silent: bool = False
@@ -101,11 +105,11 @@ class TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     def add_task[T_Ret](self, task: asyncio.Task[T_Ret]) -> asyncio.Task[T_Ret]:
         if not self._cleaner:
             t = self.ctx.async_as_background(self.cleaner())
-            self._cleaner = t
+            self._cleaner.append(t)
 
             def remove_cleaner(res: _protocols.FutureStatus[None]) -> None:
-                if self._cleaner is t:
-                    self._cleaner = None
+                if self._cleaner and self._cleaner[0] is t:
+                    self._cleaner.clear()
 
             t.add_done_callback(remove_cleaner)
 
@@ -137,19 +141,13 @@ class TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
                     else:
                         await self.ctx.wait_for_first_future(self.ctx, *self.ts)
 
-                    self.ts = [t for t in self.ts if not t.done()]
+                    self.ts[:] = [t for t in self.ts if not t.done()]
         finally:
-            try:
-                await self._final()
-            finally:
-                self.ctx.cancel()
+            if self._cleaner:
+                self._cleaner[0].cancel()
+                await self.ctx.wait_for_all_futures(*self._cleaner)
 
-    async def _final(self) -> None:
-        if self._cleaner:
-            self._cleaner.cancel()
-            await self.ctx.wait_for_all_futures(self._cleaner)
-
-        await self.ctx.wait_for_all_futures(self.ctx.async_as_background(self.clean()))
+            await self.ctx.wait_for_all_futures(self.ctx.async_as_background(self.clean()))
 
     @property
     def pending(self) -> int:
@@ -177,4 +175,4 @@ class TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
                 remaining.append(t)
 
         await self.ctx.wait_for_all_futures(*destroyed)
-        self.ts = remaining + [t for t in self.ts if t not in destroyed and t not in remaining]
+        self.ts[:] = remaining + [t for t in self.ts if t not in destroyed and t not in remaining]
