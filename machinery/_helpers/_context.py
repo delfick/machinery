@@ -367,6 +367,8 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
             return await result
         finally:
             handle.cancel()
+            task.cancel()
+            await self.wait_for_all_futures(task)
 
     def async_as_background[T_Ret](
         self, coro: Coroutine[object, object, T_Ret], *, silent: bool = True
