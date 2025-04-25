@@ -8,11 +8,12 @@ import pytest
 from machinery import helpers as hp
 from machinery import test_helpers as thp
 
-log = logging.getLogger()
-
 
 @pytest.fixture
 def ctx() -> Iterator[hp.CTX]:
+    log = logging.getLogger()
+    log.setLevel(logging.INFO)
+
     tramp: hp.protocols.Tramp = hp.Tramp(log=log)
     with hp.CTX.beginning(name="::", tramp=tramp) as ctx:
         yield ctx

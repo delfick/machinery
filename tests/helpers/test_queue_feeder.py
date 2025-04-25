@@ -9,7 +9,8 @@ from machinery import helpers as hp
 @pytest.fixture
 def ctx() -> Iterator[hp.CTX]:
     log = logging.getLogger()
-    log.level = logging.INFO
+    log.setLevel(logging.INFO)
+
     tramp: hp.protocols.Tramp = hp.Tramp(log=log)
     with hp.CTX.beginning(name="::", tramp=tramp) as ctx:
         yield ctx

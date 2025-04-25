@@ -14,7 +14,19 @@ from machinery import helpers as hp
 from machinery import test_helpers as thp
 from machinery._helpers import _context
 
-log = logging.getLogger()
+
+@pytest.fixture
+def log() -> logging.Logger:
+    log = logging.getLogger()
+    log.setLevel(logging.INFO)
+    return log
+
+
+@pytest.fixture
+def ctx(log: logging.Logger) -> Iterator[hp.CTX]:
+    tramp: hp.protocols.Tramp = hp.Tramp(log=log)
+    with hp.CTX.beginning(name="::", tramp=tramp) as ctx:
+        yield ctx
 
 
 @dataclasses.dataclass(frozen=True)
@@ -78,7 +90,9 @@ class CalledHelper:
 
 class TestTramp:
     class TestFutureNames:
-        def test_can_set_and_get_names_for_futures(self, loop: asyncio.AbstractEventLoop) -> None:
+        def test_can_set_and_get_names_for_futures(
+            self, log: logging.Logger, loop: asyncio.AbstractEventLoop
+        ) -> None:
             fut: asyncio.Future[None] = loop.create_future()
             tramp = hp.Tramp(log=log)
 
@@ -105,7 +119,7 @@ class TestTramp:
 
     class TestFutureToString:
         @pytest.fixture
-        def tramp(self) -> hp.Tramp:
+        def tramp(self, log: logging.Logger) -> hp.Tramp:
             return hp.Tramp(log=log)
 
         def test_just_reprs_a_not_future(self, tramp: hp.Tramp) -> None:
@@ -162,7 +176,9 @@ class TestTramp:
             assert tramp.fut_to_string(fut2) == "<Future#None(result)>"
 
     class TestLogException:
-        def test_log_exception(self, caplog: pytest.LogCaptureFixture) -> None:
+        def test_log_exception(
+            self, log: logging.Logger, caplog: pytest.LogCaptureFixture
+        ) -> None:
             tramp = hp.Tramp(log=log)
 
             error = ValueError("computer says no")
@@ -194,11 +210,14 @@ class TestTramp:
 
     class TestSilentReporter:
         @pytest.fixture
-        def tramp(self) -> hp.Tramp:
+        def tramp(self, log: logging.Logger) -> hp.Tramp:
             return hp.Tramp(log=log)
 
         async def test_does_nothing_if_the_future_was_cancelled(
-            self, caplog: pytest.LogCaptureFixture, loop: asyncio.AbstractEventLoop
+            self,
+            log: logging.Logger,
+            caplog: pytest.LogCaptureFixture,
+            loop: asyncio.AbstractEventLoop,
         ) -> None:
             tramp = hp.Tramp(log=log)
             fut: asyncio.Future[None] = loop.create_future()
@@ -208,7 +227,10 @@ class TestTramp:
             assert caplog.text == ""
 
         async def test_does_nothing_if_the_future_has_an_exception(
-            self, caplog: pytest.LogCaptureFixture, loop: asyncio.AbstractEventLoop
+            self,
+            log: logging.Logger,
+            caplog: pytest.LogCaptureFixture,
+            loop: asyncio.AbstractEventLoop,
         ) -> None:
             tramp = hp.Tramp(log=log)
             fut: asyncio.Future[None] = loop.create_future()
@@ -217,7 +239,10 @@ class TestTramp:
             assert caplog.text == ""
 
         async def test_returns_true_if_we_have_a_result(
-            self, caplog: pytest.LogCaptureFixture, loop: asyncio.AbstractEventLoop
+            self,
+            log: logging.Logger,
+            caplog: pytest.LogCaptureFixture,
+            loop: asyncio.AbstractEventLoop,
         ) -> None:
             @dataclasses.dataclass(frozen=True)
             class Res:
@@ -231,11 +256,14 @@ class TestTramp:
 
     class TestReporter:
         @pytest.fixture
-        def tramp(self) -> hp.Tramp:
+        def tramp(self, log: logging.Logger) -> hp.Tramp:
             return hp.Tramp(log=log)
 
         async def test_does_nothing_if_the_future_was_cancelled(
-            self, caplog: pytest.LogCaptureFixture, loop: asyncio.AbstractEventLoop
+            self,
+            log: logging.Logger,
+            caplog: pytest.LogCaptureFixture,
+            loop: asyncio.AbstractEventLoop,
         ) -> None:
             tramp = hp.Tramp(log=log)
             fut: asyncio.Future[None] = loop.create_future()
@@ -244,7 +272,10 @@ class TestTramp:
             assert caplog.text == ""
 
         async def test_logs_exception_if_the_future_has_an_exception(
-            self, caplog: pytest.LogCaptureFixture, loop: asyncio.AbstractEventLoop
+            self,
+            log: logging.Logger,
+            caplog: pytest.LogCaptureFixture,
+            loop: asyncio.AbstractEventLoop,
         ) -> None:
             tramp = hp.Tramp(log=log)
             fut: asyncio.Future[None] = loop.create_future()
@@ -268,7 +299,10 @@ class TestTramp:
             matcher.fnmatch_lines(lines)
 
         async def test_returns_true_if_we_have_a_result(
-            self, caplog: pytest.LogCaptureFixture, loop: asyncio.AbstractEventLoop
+            self,
+            log: logging.Logger,
+            caplog: pytest.LogCaptureFixture,
+            loop: asyncio.AbstractEventLoop,
         ) -> None:
             @dataclasses.dataclass(frozen=True)
             class Res:
@@ -282,7 +316,7 @@ class TestTramp:
 
 
 class TestCTX:
-    async def test_has_helper_to_create_first_ctx(self) -> None:
+    async def test_has_helper_to_create_first_ctx(self, log: logging.Logger) -> None:
         tramp = hp.Tramp(log=log)
         loop = asyncio.get_event_loop_policy().get_event_loop()
 
@@ -322,12 +356,6 @@ class TestCTX:
         assert ctx.cancelled()
         with pytest.raises(asyncio.CancelledError):
             ctx.exception()
-
-    @pytest.fixture
-    def ctx(self) -> Iterator[hp.CTX]:
-        tramp: hp.protocols.Tramp = hp.Tramp(log=log)
-        with hp.CTX.beginning(name="::", tramp=tramp) as ctx:
-            yield ctx
 
     class TestAwaitingManagement:
         async def test_it_gets_earliest_exception(self, ctx: hp.CTX) -> None:
