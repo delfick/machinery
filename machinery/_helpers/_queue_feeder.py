@@ -344,7 +344,7 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
 
         self.sent_stop.set()
         self.queue.append(QueueManagerStopped(exception=exc), priority=priority)
-        self.queue.ctx.cancel()
+        self.queue.breaker.set()
 
     def _process_queue_after_yielded(
         self, queue: _queue.Queue[QueueManagerResult[T_QueueContext], T_Tramp]

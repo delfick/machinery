@@ -89,7 +89,7 @@ class TestQueue:
 
                     async for item in queue:
                         if item == 5:
-                            ctx.cancel()
+                            queue.breaker.set()
 
                         found.append(item)
 
@@ -113,7 +113,7 @@ class TestQueue:
                 for i in (2, 3, 4):
                     queue.append(i)
                 await wait
-                ctx.cancel()
+                queue.breaker.set()
                 for i in (5, 6, 7):
                     queue.append(i)
 
@@ -151,7 +151,7 @@ class TestQueue:
             async for item in queue:
                 found.append(item)
                 if item == 9:
-                    ctx.cancel()
+                    queue.breaker.set()
 
             assert found == list(range(10))
 
@@ -180,7 +180,7 @@ class TestQueue:
 
                     async for item in queue:
                         if item == 5:
-                            ctx.cancel()
+                            queue.breaker.set()
 
                         found.append(item)
 
@@ -204,7 +204,7 @@ class TestQueue:
                 for i in (2, 3, 4):
                     queue.append(i)
                 await wait
-                ctx.cancel()
+                queue.breaker.set()
                 for i in (5, 6, 7):
                     queue.append(i)
 
@@ -242,7 +242,7 @@ class TestQueue:
             async for item in queue:
                 found.append(item)
                 if item == 9:
-                    ctx.cancel()
+                    queue.breaker.set()
 
             assert found == list(range(10))
 
@@ -259,7 +259,7 @@ class TestQueue:
                     queue.append(50, priority=True)
 
                 if item == 7:
-                    queue.ctx.cancel()
+                    queue.breaker.set()
 
             assert found == [0, 1, 2, 3, 50, 4, 5, 6, 7]
 
@@ -275,7 +275,7 @@ class TestQueue:
             def sneaky_stop(queue: hp.Queue) -> None:
                 if len(queue) == 3:
                     queue.append(40)
-                    queue.ctx.cancel()
+                    queue.breaker.set()
                     found.append("sneaky_stop")
 
             queue.process_after_yielded(sneaky_stop)

@@ -116,6 +116,7 @@ class Queue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
     ctx: _context.CTX[T_Tramp]
     empty_on_finished: bool = False
+    breaker: asyncio.Event = dataclasses.field(default_factory=asyncio.Event, init=False)
 
     _waiter: asyncio.Event = dataclasses.field(default_factory=asyncio.Event, init=False)
     _collection: collections.deque[T_Item] = dataclasses.field(
@@ -153,21 +154,25 @@ class Queue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         return self.get_all()
 
     async def get_all(self) -> AsyncGenerator[T_Item]:
+        self.breaker.clear()
+
         if not self._collection:
             self._waiter.clear()
 
         while True:
-            task = self.ctx.loop.create_task(self._waiter.wait())
+            wait_task = self.ctx.loop.create_task(self._waiter.wait())
+            break_task = self.ctx.loop.create_task(self.breaker.wait())
             try:
-                await self.ctx.wait_for_first_future(self.ctx, task)
+                await self.ctx.wait_for_first_future(self.ctx, wait_task, break_task)
             finally:
-                task.cancel()
-                await self.ctx.wait_for_all_futures(task)
+                wait_task.cancel()
+                break_task.cancel()
+                await self.ctx.wait_for_all_futures(wait_task, break_task)
 
-            if self.ctx.done() and not self.empty_on_finished:
+            if (self.ctx.done() or self.breaker.is_set()) and not self.empty_on_finished:
                 break
 
-            if self.ctx.done() and not self._collection:
+            if (self.ctx.done() or self.breaker.is_set()) and not self._collection:
                 break
 
             if not self._collection:
