@@ -253,6 +253,11 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
         return max(counts)
 
+    def has_direct_done_callback(
+        self, cb: Callable[[_protocols.FutureStatus[None]], None]
+    ) -> bool:
+        return cb in self._callbacks
+
     async def wait_for_first_future(self, *futs: _protocols.WaitByCallback[Any]) -> None:
         """
         Return without error when the first future to be completed is done.

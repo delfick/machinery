@@ -888,6 +888,28 @@ class TestCTX:
                 await c1
             assert called == []
 
+        async def test_it_knows_if_context_has_direct_done_callback(self, ctx: hp.CTX) -> None:
+            @contextlib.contextmanager
+            def contexts() -> Iterator[tuple[hp.CTX, hp.CTX, hp.CTX]]:
+                with ctx.child(name="1") as c1:
+                    with c1.child(name="2") as c2:
+                        with c2.child(name="3") as c3:
+                            yield c1, c2, c3
+
+            def on_done_1(res: hp.protocols.FutureStatus[None]) -> None:
+                pass
+
+            with contexts() as (c1, c2, c3):
+                assert not c1.has_direct_done_callback(on_done_1)
+                assert not c2.has_direct_done_callback(on_done_1)
+                assert not c3.has_direct_done_callback(on_done_1)
+
+                c2.add_done_callback(on_done_1)
+
+                assert not c1.has_direct_done_callback(on_done_1)
+                assert c2.has_direct_done_callback(on_done_1)
+                assert not c3.has_direct_done_callback(on_done_1)
+
     class TestWaitForFirstFuture:
         async def test_it_does_nothing_if_no_futures(self, ctx: hp.CTX) -> None:
             await ctx.wait_for_first_future()

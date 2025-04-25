@@ -3,12 +3,13 @@ import collections
 import dataclasses
 import queue as stdqueue
 from collections.abc import AsyncGenerator, Callable, Iterator
+from typing import TYPE_CHECKING, cast
 
-from . import _context, _protocols
+from . import _protocols
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class SyncQueue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
+class _SyncQueue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     """
     A simple wrapper around the standard library non async queue.
 
@@ -22,7 +23,7 @@ class SyncQueue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
         with ctx.child("SyncQueue") as ctx_sync_queue:
 
-            queue = hp.SyncQueue(ctx=ctx_sync_queue)
+            queue = hp.sync_queue(ctx=ctx_sync_queue)
 
             async def results():
                 for result in queue:
@@ -34,9 +35,9 @@ class SyncQueue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
             queue.append(another)
     """
 
-    ctx: _context.CTX[T_Tramp]
-    timeout: float = 0.05
-    empty_on_finished: bool = False
+    _ctx: _protocols.CTX[T_Tramp]
+    _timeout: float = 0.05
+    _empty_on_finished: bool = False
 
     _collection: stdqueue.Queue[T_Item] = dataclasses.field(
         default_factory=stdqueue.Queue, init=False
@@ -56,20 +57,20 @@ class SyncQueue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
     def get_all(self) -> Iterator[T_Item]:
         while True:
-            if self.ctx.done():
+            if self._ctx.done():
                 break
 
             try:
-                nxt = self._collection.get(timeout=self.timeout)
+                nxt = self._collection.get(timeout=self._timeout)
             except stdqueue.Empty:
                 continue
             else:
-                if self.ctx.done():
+                if self._ctx.done():
                     break
 
                 yield nxt
 
-        if self.ctx.done() and self.empty_on_finished:
+        if self._ctx.done() and self._empty_on_finished:
             for nxt in self.remaining():
                 yield nxt
 
@@ -82,7 +83,7 @@ class SyncQueue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class Queue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
+class _Queue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     """
     A custom async queue class.
 
@@ -95,7 +96,7 @@ class Queue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         ctx: hp.CTX = ...
 
         with ctx.child(name="Queue") as ctx_queue:
-            queue = hp.Queue(ctx=ctx_queue)
+            queue = hp.queue(ctx=ctx_queue)
 
             async def results():
                 # This will continue forever until ctx is done
@@ -114,20 +115,21 @@ class Queue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     class Done:
         pass
 
-    ctx: _context.CTX[T_Tramp]
-    empty_on_finished: bool = False
-    breaker: asyncio.Event = dataclasses.field(default_factory=asyncio.Event, init=False)
+    _ctx: _protocols.CTX[T_Tramp]
+    _empty_on_finished: bool = False
 
     _waiter: asyncio.Event = dataclasses.field(default_factory=asyncio.Event, init=False)
     _collection: collections.deque[T_Item] = dataclasses.field(
         default_factory=collections.deque, init=False
     )
-    _after_yielded: list[Callable[["Queue[T_Item,T_Tramp]"], None]] = dataclasses.field(
+    _after_yielded: list[Callable[["_protocols.LimitedQueue[T_Item]"], None]] = dataclasses.field(
         default_factory=list, init=False
     )
 
+    breaker: asyncio.Event = dataclasses.field(default_factory=asyncio.Event, init=False)
+
     def __post_init__(self) -> None:
-        self.ctx.add_done_callback(self._stop_waiter)
+        self._ctx.add_done_callback(self._stop_waiter)
 
     def _stop_waiter(self, res: _protocols.FutureStatus[None]) -> None:
         self._waiter.set()
@@ -139,7 +141,7 @@ class Queue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         return len(self._collection)
 
     def process_after_yielded(
-        self, process: Callable[["Queue[T_Item, T_Tramp]"], None], /
+        self, process: Callable[["_protocols.LimitedQueue[T_Item]"], None], /
     ) -> None:
         self._after_yielded.append(process)
 
@@ -160,19 +162,19 @@ class Queue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
             self._waiter.clear()
 
         while True:
-            wait_task = self.ctx.loop.create_task(self._waiter.wait())
-            break_task = self.ctx.loop.create_task(self.breaker.wait())
+            wait_task = self._ctx.loop.create_task(self._waiter.wait())
+            break_task = self._ctx.loop.create_task(self.breaker.wait())
             try:
-                await self.ctx.wait_for_first_future(self.ctx, wait_task, break_task)
+                await self._ctx.wait_for_first_future(self._ctx, wait_task, break_task)
             finally:
                 wait_task.cancel()
                 break_task.cancel()
-                await self.ctx.wait_for_all_futures(wait_task, break_task)
+                await self._ctx.wait_for_all_futures(wait_task, break_task)
 
-            if (self.ctx.done() or self.breaker.is_set()) and not self.empty_on_finished:
+            if (self._ctx.done() or self.breaker.is_set()) and not self._empty_on_finished:
                 break
 
-            if (self.ctx.done() or self.breaker.is_set()) and not self._collection:
+            if (self._ctx.done() or self.breaker.is_set()) and not self._collection:
                 break
 
             if not self._collection:
@@ -193,3 +195,28 @@ class Queue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     def remaining(self) -> Iterator[T_Item]:
         while self._collection:
             yield self._collection.popleft()
+
+    def add_done_callback(
+        self, cb: Callable[[_protocols.FutureStatus[None]], None]
+    ) -> _protocols.FutureCallback[None]:
+        return self._ctx.add_done_callback(cb)
+
+
+def queue[T_Item = object](
+    *, ctx: _protocols.CTX, empty_on_finished: bool = False
+) -> _protocols.Queue[T_Item]:
+    return _Queue[T_Item](_ctx=ctx, _empty_on_finished=empty_on_finished)
+
+
+def sync_queue[T_Item = object](
+    *,
+    ctx: _protocols.CTX,
+    timeout: float = 0.05,
+    empty_on_finished: bool = False,
+) -> _protocols.SyncQueue[T_Item]:
+    return _SyncQueue[T_Item](_ctx=ctx, _timeout=timeout, _empty_on_finished=empty_on_finished)
+
+
+if TYPE_CHECKING:
+    _Q: _protocols.Queue[object] = cast(_Queue[object], None)
+    _SQ: _protocols.SyncQueue[object] = cast(_SyncQueue[object], None)

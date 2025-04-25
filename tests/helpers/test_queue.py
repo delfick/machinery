@@ -7,6 +7,7 @@ from queue import Queue as NormalQueue
 import pytest
 
 from machinery import helpers as hp
+from machinery._helpers import queue as _queue
 
 
 @pytest.fixture
@@ -21,18 +22,18 @@ def ctx() -> Iterator[hp.CTX]:
 
 class TestQueue:
     def test_takes_in_a_ctx(self, ctx: hp.CTX) -> None:
-        queue = hp.Queue(ctx=ctx)
+        queue = hp.queue(ctx=ctx)
+        assert isinstance(queue, _queue._Queue)
 
-        assert all(f in queue.ctx.futs for f in ctx.futs)
-
-        assert queue._stop_waiter in queue.ctx._callbacks
+        assert queue._ctx.has_direct_done_callback(queue._stop_waiter)
 
         assert isinstance(queue._collection, deque)
 
         assert not queue._waiter.is_set()
 
     async def test_can_stop_the_waiter_on_done(self, ctx: hp.CTX) -> None:
-        queue = hp.Queue(ctx=ctx)
+        queue = hp.queue(ctx=ctx)
+        assert isinstance(queue, _queue._Queue)
 
         assert not queue._waiter.is_set()
 
@@ -42,7 +43,8 @@ class TestQueue:
         assert queue._waiter.is_set()
 
         # And if the waiter was already done
-        queue = hp.Queue(ctx=ctx)
+        queue = hp.queue(ctx=ctx)
+        assert isinstance(queue, _queue._Queue)
 
         queue._waiter.set()
 
@@ -52,7 +54,8 @@ class TestQueue:
         assert queue._waiter.is_set()
 
     async def test_can_get_remaining_items(self, ctx: hp.CTX) -> None:
-        queue = hp.Queue(ctx=ctx)
+        queue = hp.queue(ctx=ctx)
+        assert isinstance(queue, _queue._Queue)
         assert not queue._waiter.is_set()
 
         queue.append(1)
@@ -70,7 +73,7 @@ class TestQueue:
         ) -> None:
             wait = loop.create_future()
 
-            queue = hp.Queue(ctx=ctx)
+            queue = hp.queue(ctx=ctx)
 
             found = []
 
@@ -105,7 +108,7 @@ class TestQueue:
         ) -> None:
             wait = loop.create_future()
 
-            queue = hp.Queue(ctx=ctx)
+            queue = hp.queue(ctx=ctx)
 
             found = []
 
@@ -135,7 +138,7 @@ class TestQueue:
 
         async def test_is_re_entrant_if_we_break(self, ctx: hp.CTX) -> None:
             found = []
-            queue = hp.Queue(ctx=ctx)
+            queue = hp.queue(ctx=ctx)
 
             for i in range(10):
                 queue.append(i)
@@ -161,7 +164,7 @@ class TestQueue:
         ) -> None:
             wait = loop.create_future()
 
-            queue = hp.Queue(ctx=ctx, empty_on_finished=True)
+            queue = hp.queue(ctx=ctx, empty_on_finished=True)
 
             found = []
 
@@ -196,7 +199,7 @@ class TestQueue:
         ) -> None:
             wait = loop.create_future()
 
-            queue = hp.Queue(ctx=ctx, empty_on_finished=True)
+            queue = hp.queue(ctx=ctx, empty_on_finished=True)
 
             found = []
 
@@ -226,7 +229,7 @@ class TestQueue:
 
         async def test_is_re_entrant_if_we_break(self, ctx: hp.CTX) -> None:
             found = []
-            queue = hp.Queue(ctx=ctx, empty_on_finished=True)
+            queue = hp.queue(ctx=ctx, empty_on_finished=True)
 
             for i in range(10):
                 queue.append(i)
@@ -248,7 +251,7 @@ class TestQueue:
 
         async def test_can_append_with_priority(self, ctx: hp.CTX) -> None:
             found: list[object] = []
-            queue = hp.Queue(ctx=ctx)
+            queue = hp.queue(ctx=ctx)
 
             for i in range(10):
                 queue.append(i)
@@ -267,12 +270,12 @@ class TestQueue:
             self, ctx: hp.CTX
         ) -> None:
             found: list[object] = []
-            queue = hp.Queue(ctx=ctx)
+            queue = hp.queue(ctx=ctx)
 
             for i in range(10):
                 queue.append(i)
 
-            def sneaky_stop(queue: hp.Queue) -> None:
+            def sneaky_stop(queue: hp.protocols.LimitedQueue) -> None:
                 if len(queue) == 3:
                     queue.append(40)
                     queue.breaker.set()
@@ -290,18 +293,20 @@ class TestQueue:
 
 class TestSyncQueue:
     def test_takes_in_a_ctx(self, ctx: hp.CTX) -> None:
-        queue = hp.SyncQueue(ctx=ctx)
+        queue = hp.sync_queue(ctx=ctx)
+        assert isinstance(queue, _queue._SyncQueue)
 
-        assert all(f in queue.ctx.futs for f in ctx.futs)
-        assert queue.timeout == 0.05
+        assert queue._timeout == 0.05
 
         assert isinstance(queue._collection, NormalQueue)
 
-        queue = hp.SyncQueue(ctx=ctx, timeout=1)
-        assert queue.timeout == 1
+        queue2 = hp.sync_queue(ctx=ctx, timeout=1)
+        assert isinstance(queue2, _queue._SyncQueue)
+        assert queue2._timeout == 1
 
     def test_can_append_items(self, ctx: hp.CTX) -> None:
-        queue = hp.SyncQueue(ctx=ctx)
+        queue = hp.sync_queue(ctx=ctx)
+        assert isinstance(queue, _queue._SyncQueue)
 
         queue.append(1)
         queue.append(2)
@@ -322,7 +327,7 @@ class TestSyncQueue:
         assert found == [3]
 
     async def test_can_get_remaining_items(self, ctx: hp.CTX) -> None:
-        queue = hp.SyncQueue(ctx=ctx)
+        queue = hp.sync_queue(ctx=ctx)
 
         queue.append(1)
         queue.append(2)
@@ -336,7 +341,7 @@ class TestSyncQueue:
         ) -> None:
             wait = loop.create_future()
 
-            queue = hp.SyncQueue(ctx=ctx)
+            queue = hp.sync_queue(ctx=ctx)
 
             found = []
 
@@ -373,7 +378,7 @@ class TestSyncQueue:
         ) -> None:
             wait = loop.create_future()
 
-            queue = hp.SyncQueue(ctx=ctx)
+            queue = hp.sync_queue(ctx=ctx)
 
             found = []
 
@@ -405,7 +410,7 @@ class TestSyncQueue:
 
         async def test_is_re_entrant_if_we_break(self, ctx: hp.CTX) -> None:
             found = []
-            queue = hp.SyncQueue(ctx=ctx)
+            queue = hp.sync_queue(ctx=ctx)
 
             for i in range(10):
                 queue.append(i)
@@ -431,7 +436,7 @@ class TestSyncQueue:
         ) -> None:
             wait = loop.create_future()
 
-            queue = hp.SyncQueue(ctx=ctx, empty_on_finished=True)
+            queue = hp.sync_queue(ctx=ctx, empty_on_finished=True)
 
             found = []
 
@@ -468,7 +473,7 @@ class TestSyncQueue:
         ) -> None:
             wait = loop.create_future()
 
-            queue = hp.SyncQueue(ctx=ctx, empty_on_finished=True)
+            queue = hp.sync_queue(ctx=ctx, empty_on_finished=True)
 
             found = []
 
@@ -500,7 +505,7 @@ class TestSyncQueue:
 
         async def test_is_re_entrant_if_we_break(self, ctx: hp.CTX) -> None:
             found = []
-            queue = hp.SyncQueue(ctx=ctx, empty_on_finished=True)
+            queue = hp.sync_queue(ctx=ctx, empty_on_finished=True)
 
             for i in range(10):
                 queue.append(i)

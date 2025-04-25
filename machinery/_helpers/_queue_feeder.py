@@ -71,7 +71,7 @@ class _QueueSource:
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     ctx: _context.CTX[T_Tramp]
-    queue: _queue.Queue[QueueManagerResult[T_QueueContext], T_Tramp]
+    queue: _protocols.Queue[QueueManagerResult[T_QueueContext]]
     task_holder: _task_holder.TaskHolder[T_Tramp]
     make_empty_context: Callable[[], T_QueueContext]
 
@@ -82,7 +82,7 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
     )
 
     def __post_init__(self) -> None:
-        self.queue.ctx.add_done_callback(self._on_queue_stopped)
+        self.queue.add_done_callback(self._on_queue_stopped)
         self.queue.process_after_yielded(self._process_queue_after_yielded)
 
     def set_as_finished_if_out_of_sources(self) -> None:
@@ -347,7 +347,7 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
         self.queue.breaker.set()
 
     def _process_queue_after_yielded(
-        self, queue: _queue.Queue[QueueManagerResult[T_QueueContext], T_Tramp]
+        self, queue: _protocols.LimitedQueue[QueueManagerResult[T_QueueContext]]
     ) -> None:
         if not self.sources and self.finished_if_empty_sources.is_set() and queue.is_empty():
             self._send_stop()
@@ -371,7 +371,7 @@ async def queue_manager[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.T
                 ctx_task_holder.child(name=f"{name}queue_manager[streamer]") as ctx_streamer,
                 ctx_task_holder.child(name=f"{name}queue_manager[feeder]") as ctx_feeder,
             ):
-                streamer = _queue.Queue[QueueManagerResult[T_QueueContext], T_Tramp](
+                streamer: _protocols.Queue[QueueManagerResult[T_QueueContext]] = _queue.queue(
                     ctx=ctx_streamer, empty_on_finished=True
                 )
                 feeder = _QueueFeeder(
