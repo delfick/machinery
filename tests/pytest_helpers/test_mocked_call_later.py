@@ -3,28 +3,25 @@ import time
 from collections.abc import Callable
 from typing import Unpack
 
-import pytest
-
 from machinery import test_helpers as thp
 
 
-@pytest.fixture()
-def loop() -> asyncio.AbstractEventLoop:
-    return asyncio.get_event_loop_policy().get_event_loop()
-
-
 class TestMockedCalledLater:
-    async def test_works(self, loop: asyncio.AbstractEventLoop) -> None:
-        with thp.FakeTime() as t:
-            async with thp.MockedCallLater(t, loop=loop):
+    async def test_works(self) -> None:
+        loop = asyncio.get_running_loop()
+
+        if True:
+            async with thp.mocked_call_later():
                 waiter = asyncio.Event()
                 loop.call_later(5, waiter.set)
                 await waiter.wait()
                 assert time.time() == 5
 
-    async def test_does_the_calls_in_order(self, loop: asyncio.AbstractEventLoop) -> None:
-        with thp.FakeTime() as t:
-            async with thp.MockedCallLater(t, loop=loop):
+    async def test_does_the_calls_in_order(self) -> None:
+        loop = asyncio.get_running_loop()
+
+        if True:
+            async with thp.mocked_call_later():
                 assert time.time() == 0
 
                 called = []
@@ -44,9 +41,11 @@ class TestMockedCalledLater:
 
                 assert called == [(0.3, "0.3"), (1, "1"), (2, "2"), (5, "5")]
 
-    async def test_can_cancel_handles(self, loop: asyncio.AbstractEventLoop) -> None:
-        with thp.FakeTime() as t:
-            async with thp.MockedCallLater(t, loop=loop) as m:
+    async def test_can_cancel_handles(self) -> None:
+        loop = asyncio.get_running_loop()
+
+        if True:
+            async with thp.mocked_call_later() as m:
                 info: dict[str, asyncio.TimerHandle | None] = {"handle": None}
 
                 def nxt[*T_Args](

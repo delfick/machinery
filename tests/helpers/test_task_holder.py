@@ -239,17 +239,15 @@ class TestTaskHolder:
             await asyncio.sleep(0)
             assert called == ["ONE", "TWO", "CANC_ONE", "FIN_ONE", "DONE_TWO", "FIN_TWO"]
 
-    async def test_doesnt_lose_tasks_from_race_condition(
-        self, ctx: hp.CTX, loop: asyncio.AbstractEventLoop
-    ) -> None:
-        with thp.FakeTime() as t:
-            async with thp.MockedCallLater(t, loop=loop):
+    async def test_doesnt_lose_tasks_from_race_condition(self, ctx: hp.CTX) -> None:
+        if True:
+            async with thp.mocked_call_later(ctx=ctx):
                 called = []
                 made = {}
 
                 class TaskHolderManualClean(hp.TaskHolder):
                     async def cleaner(self) -> None:
-                        await loop.create_future()
+                        await ctx.loop.create_future()
 
                 async with TaskHolderManualClean(ctx=ctx) as ts:
 

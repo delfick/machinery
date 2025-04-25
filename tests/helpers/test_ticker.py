@@ -20,16 +20,8 @@ def ctx() -> Iterator[hp.CTX]:
 
 
 @pytest.fixture
-def fake_time() -> Iterator[thp.FakeTime]:
-    with thp.FakeTime() as t:
-        yield t
-
-
-@pytest.fixture
-async def fake_mocked_later(
-    fake_time: thp.FakeTime, loop: asyncio.AbstractEventLoop
-) -> AsyncGenerator[thp.MockedCallLater]:
-    async with thp.MockedCallLater(fake_time, loop=loop) as m:
+async def fake_mocked_later(ctx: hp.CTX) -> AsyncGenerator[thp.MockedCallLater]:
+    async with thp.mocked_call_later(ctx=ctx) as m:
         yield m
 
 

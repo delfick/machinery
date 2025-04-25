@@ -1063,15 +1063,8 @@ class TestCTX:
 
     class TestAsyncWithTimeout:
         @pytest.fixture
-        def fake_time(self) -> Iterator[thp.FakeTime]:
-            with thp.FakeTime() as t:
-                yield t
-
-        @pytest.fixture
-        async def fake_mocked_later(
-            self, fake_time: thp.FakeTime, loop: asyncio.AbstractEventLoop
-        ) -> AsyncGenerator[thp.MockedCallLater]:
-            async with thp.MockedCallLater(fake_time, loop=loop) as m:
+        async def fake_mocked_later(self, ctx: hp.CTX) -> AsyncGenerator[thp.MockedCallLater]:
+            async with thp.mocked_call_later(ctx=ctx) as m:
                 yield m
 
         async def test_it_raises_cancelled_error_by_default_if_time_runs_out(

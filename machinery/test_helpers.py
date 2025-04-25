@@ -35,141 +35,66 @@ class Cancellable(Protocol):
     def cancel(self) -> None: ...
 
 
-class FakeTime:
-    def __init__(self, mock_sleep: bool = False, mock_async_sleep: bool = False) -> None:
-        self.time: float = 0
-        self.patches: list[mock._patch[object]] = []
-        self.mock_sleep = mock_sleep
-        self.mock_async_sleep = mock_async_sleep
-        self.original_time = time.time
-        self.original_async_sleep = asyncio.sleep
+class MockedCallLater(Protocol):
+    @property
+    def called_times(self) -> list[float]: ...
 
-    def set(self, t: float) -> None:
-        self.time = round(t, 3)
+    def add_time(self, t: float) -> None: ...
 
-    def add(self, t: float) -> None:
-        self.time = round(self.time + t, 3)
+    def set_time(self, t: float) -> None: ...
 
-    def __enter__(self) -> Self:
-        return self.start()
+    async def add(self, amount: float) -> None: ...
 
-    def start(self) -> Self:
-        self.patches.append(mock.patch("time.time", self))
-
-        if self.mock_sleep:
-            self.patches.append(mock.patch("time.sleep", self.sleep))
-        if self.mock_async_sleep:
-            self.patches.append(mock.patch("asyncio.sleep", self.async_sleep))
-
-        for p in self.patches:
-            p.start()
-
-        return self
-
-    def __exit__(
-        self,
-        exc_typ: type[BaseException] | None,
-        exc: BaseException | None,
-        tb: types.TracebackType | None,
-    ) -> None:
-        self.finish(exc_typ, exc, tb)
-
-    def finish(
-        self,
-        exc_typ: type[BaseException] | None = None,
-        exc: BaseException | None = None,
-        tb: types.TracebackType | None = None,
-    ) -> None:
-        for p in self.patches:
-            p.stop()
-
-    def __call__(self) -> float:
-        return round(self.time, 3)
-
-    def sleep(self, amount: float) -> None:
-        self.add(amount)
-
-    async def async_sleep(self, amount: float) -> None:
-        self.add(amount)
-        await self.original_async_sleep(0.001)
+    async def resume_after(self, amount: float) -> None: ...
 
 
-class MockedCallLater:
-    async def __aexit__(
-        self,
-        exc_type: type[BaseException] | None = None,
-        exc: BaseException | None = None,
-        tb: types.TracebackType | None = None,
-    ) -> None:
-        return await self.finish(exc_type, exc, tb)
+@dataclasses.dataclass
+class _MockedCallLater:
+    _ctx: hp.CTX
+    _original_call_later: _CallLater
 
-    async def __aenter__(self) -> Self:
-        async with hp.ensure_aexit(self):
-            return await self.start()
+    _time: float
+    _precision: float
 
-    original_call_later: _CallLater
+    funcs: list[tuple[float, _CallableWithOriginal]] = dataclasses.field(default_factory=list)
+    called_times: list[float] = dataclasses.field(default_factory=list)
+    have_call_later: asyncio.Event = dataclasses.field(default_factory=asyncio.Event)
 
-    def __init__(
-        self,
-        t: FakeTime,
-        loop: asyncio.AbstractEventLoop,
-        precision: float = 0.1,
-        log: logging.Logger | None = None,
-    ) -> None:
-        self.t = t
-        self.loop = loop
-        self.precision = precision
+    def time(self) -> float:
+        return self._time
 
-        if log is None:
-            log = logging.getLogger()
-            log.level = logging.INFO
+    def add_time(self, t: float) -> None:
+        self._time = round(self._time + t, 3)
 
-        tramp = hp.Tramp(log=log)
-        self.ctx = hp.CTX.beginning(name="::", tramp=tramp)
-
-        self.task: asyncio.Task[None] | None = None
-        self.call_later_patch: mock._patch[object] | None = None
-        self.create_future_patch: mock._patch[object] | None = None
-
-        self.funcs: list[tuple[float, _CallableWithOriginal]] = []
-        self.called_times: list[float] = []
-        self.have_call_later = asyncio.Event()
-
-    async def start(self) -> Self:
-        self.task = self.ctx.async_as_background(self._calls())
-        self.original_call_later = self.loop.call_later
-        self.call_later_patch = mock.patch.object(self.loop, "call_later", self._call_later)
-        self.call_later_patch.start()
-        return self
-
-    async def finish(
-        self,
-        exc_typ: type[BaseException] | None = None,
-        exc: BaseException | None = None,
-        tb: types.TracebackType | None = None,
-    ) -> None:
-        if self.call_later_patch:
-            self.call_later_patch.stop()
-        if self.task:
-            self.task.cancel()
-            await self.ctx.wait_for_all_futures(self.task)
+    def set_time(self, t: float) -> None:
+        self._time = t
 
     async def add(self, amount: float) -> None:
         await self._run(iterations=round(amount / 0.1))
 
     async def resume_after(self, amount: float) -> None:
-        fut = self.loop.create_future()
-        self.loop.call_later(amount, fut.set_result, True)
-        await fut
+        event = asyncio.Event()
+        self._ctx.loop.call_later(amount, event.set)
+        await event.wait()
 
-    def _call_later[*T_Args, T_Ret](
+    async def run(self) -> None:
+        await self.have_call_later.wait()
+
+        while True:
+            await self._allow_real_loop()
+            await self.have_call_later.wait()
+            await self._run()
+            if not self.funcs:
+                self.have_call_later.clear()
+
+    def call_later[*T_Args, T_Ret](
         self, when: float, func: Callable[[Unpack[T_Args]], T_Ret], *args: *T_Args
     ) -> Cancellable:
         fr = inspect.currentframe()
         while fr and "tornado/" not in fr.f_code.co_filename:
             fr = fr.f_back
         if fr:
-            return self.original_call_later(when, func, *args)
+            return self._original_call_later(when, func, *args)
 
         current_frame = inspect.currentframe()
         assert current_frame is not None
@@ -180,7 +105,7 @@ class MockedCallLater:
 
         called_from = frame_code.co_filename
         if any(exc in called_from for exc in ("alt_pytest_asyncio/",)):
-            return self.original_call_later(when, func, *args)
+            return self._original_call_later(when, func, *args)
 
         self.have_call_later.set()
 
@@ -204,21 +129,11 @@ class MockedCallLater:
 
     async def _allow_real_loop(self, until: float = 0) -> None:
         while True:
-            ready = self.loop._ready  # type: ignore[attr-defined]
+            ready = self._ctx.loop._ready  # type: ignore[attr-defined]
             ready_len = len(ready)
             await asyncio.sleep(0)
             if ready_len <= until:
                 return
-
-    async def _calls(self) -> None:
-        await self.have_call_later.wait()
-
-        while True:
-            await self._allow_real_loop()
-            await self.have_call_later.wait()
-            await self._run()
-            if not self.funcs:
-                self.have_call_later.clear()
 
     async def _run(self, iterations: int = 0) -> bool:
         for iteration in range(iterations + 1):
@@ -237,12 +152,41 @@ class MockedCallLater:
             self.funcs = remaining
 
             if iterations >= 1 and iteration > 0:
-                self.t.add(self.precision)
+                self.add_time(self._precision)
 
         if not executed and iterations == 0:
-            self.t.add(self.precision)
+            self.add_time(self._precision)
 
         return executed
+
+
+@contextlib.asynccontextmanager
+async def mocked_call_later(
+    *, ctx: hp.CTX | None = None, precision: float = 0.1, start_time: float = 0
+) -> AsyncGenerator[MockedCallLater]:
+    if ctx is None:
+        log = logging.getLogger()
+        log.level = logging.INFO
+        tramp: hp.protocols.Tramp = hp.Tramp(log=log)
+        ctx = hp.CTX.beginning(name="::", tramp=tramp)
+
+    with ctx.child(name="MockedCalllater") as ctx_mocked:
+        instance = _MockedCallLater(
+            _ctx=ctx_mocked,
+            _original_call_later=ctx.loop.call_later,
+            _time=start_time,
+            _precision=precision,
+        )
+
+        with (
+            mock.patch("time.time", instance.time),
+            mock.patch.object(ctx.loop, "call_later", instance.call_later),
+        ):
+            with ctx_mocked.child(name="TaskHolder") as ctx_task_holder:
+                async with hp.TaskHolder(ctx=ctx_task_holder) as task_holder:
+                    task_holder.add(instance.run())
+                    yield instance
+                    ctx_task_holder.cancel()
 
 
 class Domino(Protocol):
