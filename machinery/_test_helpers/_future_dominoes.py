@@ -167,7 +167,7 @@ class _FutureDominoes[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
 
             for i, (retrieved, fut) in enumerate(requirements):
                 await retrieved
-                ctx.loop.call_soon(fut.set_result, None)
+                fut.set_result(None)
                 await fut
                 ctx.tramp.log_info(f"FUTURE_DOMINOES: future {i + 1} done")
                 await instance._allow_real_loop()

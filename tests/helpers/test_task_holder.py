@@ -296,6 +296,7 @@ class TestTaskHolder:
                 # And after the clean, we expect it to have made the t2
                 assert "t2" not in made
                 await ts._perform_clean()
+                await asyncio.sleep(0)
                 assert called == ["TWO", "CANC_TWO", "FIN_TWO", "ADD_ONE", "ONE"]
                 assert list(ts) == [made["t2"]]
 

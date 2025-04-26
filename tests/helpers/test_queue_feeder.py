@@ -366,15 +366,15 @@ class TestQueueFeeder:
 
         assert got == [
             ("some_value", ""),
-            (1, "a_list"),
             ("one", "a_generator"),
-            (2, "a_list"),
+            (1, "a_list"),
             ("two", "a_generator"),
-            ("another_value", ""),
-            ("three", "a_list"),
+            (2, "a_list"),
             ("yo", ""),
             ("three", "a_generator"),
             ("gen_stopped"),
+            ("another_value", ""),
+            ("three", "a_list"),
             (4, "a_list"),
             ("list_stopped"),
             "stopped",
@@ -421,14 +421,13 @@ class TestQueueFeeder:
 
         assert got == [
             ("some_value", ""),
-            (1, "a_list"),
             ("one", "a_generator"),
             ("stopped", error),
-            (2, "a_list"),
+            (1, "a_list"),
             ("two", "a_generator"),
             (("gen_stopped", error)),
-            ("another_value", ""),
-            ("three", "a_list"),
+            (2, "a_list"),
             ("list_stopped", error),
             ("yo", ""),
+            ("another_value", ""),
         ]

@@ -216,7 +216,7 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
                 )
                 self._queue.append_instruction(get_next)
 
-        self._ctx.loop.call_later(0, get_next)
+        self._queue.append_instruction(get_next)
         self._clear_sources()
 
     def add_value(

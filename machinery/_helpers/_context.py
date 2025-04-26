@@ -273,8 +273,7 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         )
 
         if any_events_done or any_futures_done:
-            asyncio.get_running_loop().call_soon(waiter.set)
-            await waiter.wait()
+            await asyncio.sleep(0)
             return
 
         futs: list[_protocols.WaitByCallback[Any]] = []
@@ -329,8 +328,7 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         waiter = asyncio.Event()
 
         if all(fut.done() for fut in unique):
-            asyncio.get_running_loop().call_soon(waiter.set)
-            await waiter.wait()
+            await asyncio.sleep(0)
             return
 
         complete: dict[int, bool] = {}
