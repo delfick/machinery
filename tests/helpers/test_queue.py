@@ -84,20 +84,19 @@ class TestQueue:
                 for i in (5, 6, 7):
                     queue.append(i)
 
-            if True:
-                async with hp.task_holder(ctx=ctx) as ts:
-                    ts.add_coroutine(fill())
+            async with hp.task_holder(ctx=ctx) as ts:
+                ts.add_coroutine(fill())
 
-                    queue.append(1)
+                queue.append(1)
 
-                    async for item in queue:
-                        if item == 5:
-                            queue.breaker.set()
+                async for item in queue:
+                    if item == 5:
+                        queue.breaker.set()
 
-                        found.append(item)
+                    found.append(item)
 
-                        if item == 4:
-                            wait.set_result(True)
+                    if item == 4:
+                        wait.set_result(True)
 
             # The queue will drop remaining items
             assert found == [1, 2, 3, 4, 5]
@@ -120,17 +119,16 @@ class TestQueue:
                 for i in (5, 6, 7):
                     queue.append(i)
 
-            if True:
-                async with hp.task_holder(ctx=ctx) as ts:
-                    ts.add_coroutine(fill())
+            async with hp.task_holder(ctx=ctx) as ts:
+                ts.add_coroutine(fill())
 
-                    queue.append(1)
+                queue.append(1)
 
-                    async for item in queue:
-                        found.append(item)
+                async for item in queue:
+                    found.append(item)
 
-                        if item == 4:
-                            wait.set_result(True)
+                    if item == 4:
+                        wait.set_result(True)
 
             # The queue will drop remaining items
             assert found == [1, 2, 3, 4]
@@ -175,20 +173,19 @@ class TestQueue:
                 for i in (5, 6, 7):
                     queue.append(i)
 
-            if True:
-                async with hp.task_holder(ctx=ctx) as ts:
-                    ts.add_coroutine(fill())
+            async with hp.task_holder(ctx=ctx) as ts:
+                ts.add_coroutine(fill())
 
-                    queue.append(1)
+                queue.append(1)
 
-                    async for item in queue:
-                        if item == 5:
-                            queue.breaker.set()
+                async for item in queue:
+                    if item == 5:
+                        queue.breaker.set()
 
-                        found.append(item)
+                    found.append(item)
 
-                        if item == 4:
-                            wait.set_result(True)
+                    if item == 4:
+                        wait.set_result(True)
 
             # The queue will not drop remaining items
             assert found == [1, 2, 3, 4, 5, 6, 7]
@@ -211,17 +208,16 @@ class TestQueue:
                 for i in (5, 6, 7):
                     queue.append(i)
 
-            if True:
-                async with hp.task_holder(ctx=ctx) as ts:
-                    ts.add_coroutine(fill())
+            async with hp.task_holder(ctx=ctx) as ts:
+                ts.add_coroutine(fill())
 
-                    queue.append(1)
+                queue.append(1)
 
-                    async for item in queue:
-                        found.append(item)
+                async for item in queue:
+                    found.append(item)
 
-                        if item == 4:
-                            wait.set_result(True)
+                    if item == 4:
+                        wait.set_result(True)
 
             # The queue will not drop remaining items
             assert found == [1, 2, 3, 4, 5, 6, 7]
@@ -352,22 +348,21 @@ class TestSyncQueue:
                 for i in (5, 6, 7):
                     queue.append(i)
 
-            if True:
-                async with hp.task_holder(ctx=ctx) as ts:
-                    ts.add_coroutine(fill())
+            async with hp.task_holder(ctx=ctx) as ts:
+                ts.add_coroutine(fill())
 
-                    queue.append(1)
+                queue.append(1)
 
-                    for item in queue:
-                        if item == 5:
-                            ctx.cancel()
+                for item in queue:
+                    if item == 5:
+                        ctx.cancel()
 
-                        found.append(item)
+                    found.append(item)
 
-                        if item == 4:
-                            wait.set_result(True)
+                    if item == 4:
+                        wait.set_result(True)
 
-                        await asyncio.sleep(0.01)
+                    await asyncio.sleep(0.01)
 
             # The queue will drop remaining items
             assert found == [1, 2, 3, 4, 5]
@@ -390,19 +385,18 @@ class TestSyncQueue:
                 for i in (5, 6, 7):
                     queue.append(i)
 
-            if True:
-                async with hp.task_holder(ctx=ctx) as ts:
-                    ts.add_coroutine(fill())
+            async with hp.task_holder(ctx=ctx) as ts:
+                ts.add_coroutine(fill())
 
-                    queue.append(1)
+                queue.append(1)
 
-                    for item in queue:
-                        found.append(item)
+                for item in queue:
+                    found.append(item)
 
-                        if item == 4:
-                            wait.set_result(True)
+                    if item == 4:
+                        wait.set_result(True)
 
-                        await asyncio.sleep(0.01)
+                    await asyncio.sleep(0.01)
 
             # The queue will drop remaining items
             assert found == [1, 2, 3, 4]
@@ -447,22 +441,21 @@ class TestSyncQueue:
                 for i in (5, 6, 7):
                     queue.append(i)
 
-            if True:
-                async with hp.task_holder(ctx=ctx) as ts:
-                    ts.add_coroutine(fill())
+            async with hp.task_holder(ctx=ctx) as ts:
+                ts.add_coroutine(fill())
 
-                    queue.append(1)
+                queue.append(1)
 
-                    for item in queue:
-                        if item == 5:
-                            ctx.cancel()
+                for item in queue:
+                    if item == 5:
+                        ctx.cancel()
 
-                        found.append(item)
+                    found.append(item)
 
-                        if item == 4:
-                            wait.set_result(True)
+                    if item == 4:
+                        wait.set_result(True)
 
-                        await asyncio.sleep(0.01)
+                    await asyncio.sleep(0.01)
 
             # The queue will not drop remaining items
             assert found == [1, 2, 3, 4, 5, 6, 7]
@@ -485,19 +478,18 @@ class TestSyncQueue:
                 for i in (5, 6, 7):
                     queue.append(i)
 
-            if True:
-                async with hp.task_holder(ctx=ctx) as ts:
-                    ts.add_coroutine(fill())
+            async with hp.task_holder(ctx=ctx) as ts:
+                ts.add_coroutine(fill())
 
-                    queue.append(1)
+                queue.append(1)
 
-                    for item in queue:
-                        found.append(item)
+                for item in queue:
+                    found.append(item)
 
-                        if item == 4:
-                            wait.set_result(True)
+                    if item == 4:
+                        wait.set_result(True)
 
-                        await asyncio.sleep(0.01)
+                    await asyncio.sleep(0.01)
 
             # The queue will not remaining items
             assert found == [1, 2, 3, 4, 5, 6, 7]
