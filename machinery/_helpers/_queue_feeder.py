@@ -6,7 +6,7 @@ import inspect
 from collections.abc import AsyncGenerator, Callable, Coroutine, Generator, Iterator, Sequence
 from typing import Optional
 
-from . import _context, _protocols, _queue, _task_holder
+from . import _protocols, _queue, _task_holder
 
 
 class QueueInput(enum.Enum):
@@ -70,7 +70,7 @@ class _QueueSource:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
-    ctx: _context.CTX[T_Tramp]
+    ctx: _protocols.CTX[T_Tramp]
     queue: _protocols.Queue[QueueManagerResult[T_QueueContext]]
     task_holder: _protocols.TaskHolder
     make_empty_context: Callable[[], T_QueueContext]
@@ -355,22 +355,22 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
 
 @contextlib.asynccontextmanager
 async def queue_manager[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp](
-    *, ctx: _context.CTX[T_Tramp], make_empty_context: Callable[[], T_QueueContext], name: str = ""
+    *,
+    ctx: _protocols.CTX[T_Tramp],
+    make_empty_context: Callable[[], T_QueueContext],
+    name: str = "",
 ) -> AsyncGenerator[
     tuple[
         _protocols.Streamer[QueueManagerResult[T_QueueContext]],
         _protocols.QueueFeeder[T_QueueContext],
     ]
 ]:
-    def _ensure_queue_manager_result(o: object) -> QueueManagerResult[T_QueueContext]:
-        return o  # type: ignore[return-value]
-
     with ctx.child(name=f"{name}queue_manager", prefix=name) as ctx_queue_manager:
         async with _task_holder.task_holder(ctx=ctx_queue_manager) as task_holder:
             with _queue.queue(
                 ctx=ctx_queue_manager,
                 empty_on_finished=True,
-                item_ensurer=_ensure_queue_manager_result,
+                item_ensurer=_queue.EnsureItemGetter[QueueManagerResult[T_QueueContext]].get(),
             ) as streamer:
                 with (
                     ctx_queue_manager.child(name=f"{name}queue_manager[feeder]") as ctx_feeder,

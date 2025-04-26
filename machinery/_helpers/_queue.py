@@ -9,6 +9,16 @@ from typing import TYPE_CHECKING, cast, overload
 from . import _protocols
 
 
+def _ensure_item[T_Item](o: object) -> T_Item:  # type:ignore[type-var]
+    return o  # type: ignore[return-value]
+
+
+class EnsureItemGetter[T_Item]:
+    @classmethod
+    def get(cls) -> _protocols.QueueItemDef[T_Item]:
+        return _ensure_item
+
+
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class _SyncQueue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     """
@@ -49,7 +59,10 @@ class _SyncQueue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         return self._collection.qsize()
 
     def append(self, item: T_Item) -> None:
-        self._collection.put(self._item_ensurer(item))
+        if self._item_ensurer is not _ensure_item:
+            item = self._item_ensurer(item)
+
+        self._collection.put(item)
 
     def __iter__(self) -> Iterator[T_Item]:
         return iter(self.get_all())
@@ -145,10 +158,13 @@ class _Queue[T_Item, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         self._after_yielded.append(process)
 
     def append(self, item: T_Item, *, priority: bool = False) -> None:
+        if self._item_ensurer is not _ensure_item:
+            item = self._item_ensurer(item)
+
         if priority:
-            self._collection.insert(0, self._item_ensurer(item))
+            self._collection.insert(0, item)
         else:
-            self._collection.append(self._item_ensurer(item))
+            self._collection.append(item)
         self._waiter.set()
 
     def __aiter__(self) -> AsyncGenerator[T_Item]:
@@ -201,10 +217,6 @@ class _Queue[T_Item, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         return self._ctx.add_done_callback(cb)
 
 
-def _ensure_object(o: object) -> object:
-    return o
-
-
 @overload
 def _queue(
     *,
@@ -235,7 +247,9 @@ def _queue[T_Item](
     with ctx.child(name=f"{name}queue", prefix=name) as ctx_queue:
         if item_ensurer is None:
             yield _Queue(
-                _ctx=ctx_queue, _empty_on_finished=empty_on_finished, _item_ensurer=_ensure_object
+                _ctx=ctx_queue,
+                _empty_on_finished=empty_on_finished,
+                _item_ensurer=EnsureItemGetter[object].get(),
             )
         else:
             yield _Queue(
@@ -279,7 +293,7 @@ def _sync_queue[T_Item = object](
                 _ctx=ctx_sync_queue,
                 _timeout=timeout,
                 _empty_on_finished=empty_on_finished,
-                _item_ensurer=_ensure_object,
+                _item_ensurer=EnsureItemGetter[object].get(),
             )
         else:
             yield _SyncQueue(

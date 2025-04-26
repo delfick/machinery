@@ -5,7 +5,7 @@ import sys
 import time
 from collections.abc import AsyncGenerator
 
-from . import _context, _futures, _protocols
+from . import _futures, _protocols
 
 
 class _Stop(Exception):
@@ -14,7 +14,7 @@ class _Stop(Exception):
 
 @dataclasses.dataclass(kw_only=True)
 class _TickerOptions[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
-    ctx: _context.CTX[T_Tramp]
+    ctx: _protocols.CTX[T_Tramp]
     every: int
     max_time_reached: _protocols.WaitByCallback[None]
 
@@ -167,7 +167,7 @@ class _Ticker[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 async def tick[T_Tramp: _protocols.Tramp = _protocols.Tramp](
     every: int,
     *,
-    ctx: _context.CTX[T_Tramp],
+    ctx: _protocols.CTX[T_Tramp],
     max_iterations: int | None = None,
     max_time: int | None = None,
     min_wait: float = 0.1,
