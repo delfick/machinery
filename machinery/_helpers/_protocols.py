@@ -7,6 +7,10 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol, Self, cast
 
 
 class FutureStatus[T_Ret](Protocol):
+    """
+    Represents a read-only view of a Future
+    """
+
     def done(self) -> bool: ...
     def result(self) -> T_Ret: ...
     def exception(self) -> BaseException | None: ...
@@ -14,11 +18,23 @@ class FutureStatus[T_Ret](Protocol):
 
 
 class FutureCallback[T_Ret](Protocol):
+    """
+    Represents an object that's used as a done_callback for a future.
+
+    It can be hashed and it is a callable object that takes in the status of
+    a completed future.
+    """
+
     def __hash__(self) -> int: ...
     def __call__(self, res: FutureStatus[T_Ret], /) -> None: ...
 
 
 class FutureCTXCallback[T_Ret, T_Tramp: Tramp = Tramp](Protocol):
+    """
+    Represents an object that's used as a done_callback for a future but also
+    takes in a CTX object.
+    """
+
     def __hash__(self) -> int: ...
     def __call__(self, ctx: CTX[T_Tramp], res: FutureStatus[T_Ret], /) -> None: ...
 

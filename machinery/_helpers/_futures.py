@@ -9,6 +9,17 @@ async def stop_async_generator[T_Send](
     provide: T_Send | None = None,
     exc: BaseException | None = None,
 ) -> None:
+    """
+    This will ensure an async generator has stopped.
+
+    It will first throw an exception into the generator using ``gen.athrow``.
+    This is either an ``asyncio.CancelledError`` or the ``exc`` that is provided
+    if that is not ``None``.
+
+    Then we will send either ``provide`` with ``gen.asend``.
+
+    Finally, regardless of exceptions, ``gen.aclose`` will be called.
+    """
     try:
         try:
             await gen.athrow(exc or asyncio.CancelledError())

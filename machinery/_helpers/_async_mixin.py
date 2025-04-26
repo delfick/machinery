@@ -13,28 +13,39 @@ def ensure_aexit(
     ``__aenter__`` fails.
 
     Turns out if ``__aenter__`` raises an exception, then ``__aexit__`` doesn't
-    get called, which is not how I thought that worked for a lot of context
-    managers.
+    get called. This is a helper to make it easy to ensure that does happen.
 
     Usage is as follows:
 
     .. code-block:: python
 
+        import types
+
         from machinery import helpers as hp
 
 
         class MyCM:
-            async def __aenter__(self):
+            async def __aenter__(self) -> None:
                 async with hp.ensure_aexit(self):
                     return await self.start()
 
-            async def start(self):
+            async def start(self) -> ...:
                 ...
 
-            async def __aexit__(self, exc_typ, exc, tb):
-                await self.finish(exc_typ, exc, tb)
+            async def __aexit__(
+                self,
+                exc_typ: type[BaseException] | None,
+                value: BaseException | None,
+                tb: types.TracebackType | None,
+            ) -> None:
+                await self.finish(exc_typ, value, tb)
 
-            async def finish(exc_typ=None, exc=None, tb=None):
+            async def finish(
+                self,
+                exc_typ: type[BaseException] | None = None,
+                value: BaseException | None = None,
+                tb: types.TracebackType | None = None,
+            ) -> None:
                 ...
     """
 
