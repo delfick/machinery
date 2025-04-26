@@ -168,10 +168,7 @@ async def mocked_call_later(
         tramp: hp.protocols.Tramp = hp.Tramp(log=log)
         ctx = hp.CTX.beginning(name="::", tramp=tramp)
 
-    if name:
-        name = f"[{name}]-->"
-
-    with ctx.child(name=f"{name}mocked_call_later") as ctx_mocked:
+    with ctx.child(name=f"{name}mocked_call_later", prefix=name) as ctx_mocked:
         instance = _MockedCallLater(
             _ctx=ctx_mocked,
             _original_call_later=ctx.loop.call_later,

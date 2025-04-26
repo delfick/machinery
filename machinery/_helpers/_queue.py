@@ -232,10 +232,7 @@ def _queue[T_Item](
     name: str = "",
     item_ensurer: _protocols.QueueItemDef[T_Item] | None = None,
 ) -> Iterator[_protocols.Queue[T_Item]] | Iterator[_protocols.Queue[object]]:
-    if name:
-        name = f"[{name}]-->"
-
-    with ctx.child(name=f"{name}queue") as ctx_queue:
+    with ctx.child(name=f"{name}queue", prefix=name) as ctx_queue:
         if item_ensurer is None:
             yield _Queue(
                 _ctx=ctx_queue, _empty_on_finished=empty_on_finished, _item_ensurer=_ensure_object
@@ -276,10 +273,7 @@ def _sync_queue[T_Item = object](
     name: str = "",
     item_ensurer: _protocols.QueueItemDef[T_Item] | None = None,
 ) -> Iterator[_protocols.SyncQueue[T_Item]] | Iterator[_protocols.SyncQueue[object]]:
-    if name:
-        name = f"[{name}]-->"
-
-    with ctx.child(name=f"{name}sync_queue") as ctx_sync_queue:
+    with ctx.child(name=f"{name}sync_queue", prefix=name) as ctx_sync_queue:
         if item_ensurer is None:
             yield _SyncQueue(
                 _ctx=ctx_sync_queue,

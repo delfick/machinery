@@ -362,13 +362,10 @@ async def queue_manager[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.T
         _protocols.QueueFeeder[T_QueueContext],
     ]
 ]:
-    if name:
-        name = f"[{name}]-->"
-
     def _ensure_queue_manager_result(o: object) -> QueueManagerResult[T_QueueContext]:
         return o  # type: ignore[return-value]
 
-    with ctx.child(name=f"{name}queue_manager") as ctx_queue_manager:
+    with ctx.child(name=f"{name}queue_manager", prefix=name) as ctx_queue_manager:
         async with _task_holder.task_holder(ctx=ctx_queue_manager) as task_holder:
             with _queue.queue(
                 ctx=ctx_queue_manager,

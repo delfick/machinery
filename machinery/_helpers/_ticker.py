@@ -251,10 +251,7 @@ async def tick[T_Tramp: _protocols.Tramp = _protocols.Tramp](
     pauser
         If not None, we use this as a semaphore in an async with to pause the ticks
     """
-    if name:
-        name = f"[{name}]-->"
-
-    with ctx.child(name="{name}ticker") as ctx_ticker:
+    with ctx.child(name="{name}ticker", prefix=name) as ctx_ticker:
         max_time_reached = ctx.loop.create_future()
         ctx.tramp.set_future_name(max_time_reached, name=f"{ctx_ticker.name}::[max_time_reached]")
 

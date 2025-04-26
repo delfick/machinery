@@ -185,9 +185,6 @@ class _TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 async def task_holder(
     *, ctx: _protocols.CTX, name: str = ""
 ) -> AsyncGenerator[_protocols.TaskHolder]:
-    if name:
-        name = f"[{name}]-->"
-
-    with ctx.child(name=f"{name}task_holder") as ctx_task_holder:
+    with ctx.child(name=f"{name}task_holder", prefix=name) as ctx_task_holder:
         async with _TaskHolder(_ctx=ctx_task_holder) as task_holder:
             yield task_holder

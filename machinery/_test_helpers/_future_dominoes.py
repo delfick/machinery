@@ -296,10 +296,7 @@ async def future_dominoes(
     tramp: hp.protocols.Tramp = hp.Tramp(log=log)
     ctx = hp.CTX.beginning(loop=loop, name="::", tramp=tramp)
 
-    if name:
-        name = f"[{name}]-->"
-
-    with ctx.child(name="{name}future_dominoes") as ctx_future_dominoes:
+    with ctx.child(name="{name}future_dominoes", prefix=name) as ctx_future_dominoes:
         async with hp.task_holder(ctx=ctx_future_dominoes) as task_holder:
             with ctx_future_dominoes.child(name="dominoes") as ctx_dominoes:
                 with _FutureDominoes.create(
