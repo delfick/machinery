@@ -226,6 +226,9 @@ class QueueFeeder[T_QueueContext](Protocol):
 
 
 class Streamer[T_Item](Protocol):
+    @property
+    def breaker(self) -> asyncio.Event: ...
+
     def __aiter__(self) -> AsyncGenerator[T_Item]: ...
 
     def remaining(self) -> Iterator[T_Item]: ...

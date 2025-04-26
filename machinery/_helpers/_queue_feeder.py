@@ -316,6 +316,9 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
         self._ctx.add_done_callback(ensure_gen_closed)
 
         def on_done(exc: BaseException | None = None) -> None:
+            if source.finished.is_set():
+                return
+
             self._ctx.remove_done_callback(ensure_gen_closed)
 
             if exc is None and self._ctx.done():
@@ -350,6 +353,7 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
                         context=context if context is not None else self._make_empty_context(),
                     )
                 )
+                on_done(exc)
                 self._queue.append_instruction(get_next_instruction)
             else:
                 self._queue.append_instruction(

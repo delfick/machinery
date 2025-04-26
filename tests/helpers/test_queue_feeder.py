@@ -431,3 +431,93 @@ class TestQueueFeeder:
             ("yo", ""),
             ("another_value", ""),
         ]
+
+    async def test_it_can_handle_errors_from_sources(self, ctx: hp.CTX) -> None:
+        got: list[object] = []
+
+        class ComputerSaysNo(Exception):
+            pass
+
+        generator_error = ComputerSaysNo(1)
+        sync_generator_error = ComputerSaysNo(2)
+        coro_error = ComputerSaysNo(3)
+        task_error = ComputerSaysNo(4)
+        func_error = ComputerSaysNo(5)
+
+        async with hp.queue_manager(ctx=ctx, make_empty_context=lambda: "") as (streamer, feeder):
+
+            async def generator() -> AsyncGenerator[str]:
+                yield "one"
+                yield "two"
+                raise generator_error
+
+            def sync_generator() -> Iterator[int]:
+                yield 1
+                raise sync_generator_error
+
+            async def coro() -> bool:
+                raise coro_error
+
+            async def coro_for_task() -> bool:
+                raise task_error
+
+            def func() -> bool:
+                raise func_error
+
+            feeder.add_async_generator(generator(), context="async_generator")
+
+            async for result in streamer:
+                match result:
+                    case hp.QueueManagerSuccess(value=value, context=context):
+                        got.append((value, context))
+
+                        if value == "two" and context == "async_generator":
+                            feeder.add_sync_function(func, context="sync_function")
+                            feeder.add_coroutine(coro(), context="coroutine")
+
+                    case hp.QueueManagerIterationStop(
+                        context="async_generator", exception=exception
+                    ):
+                        got.append(("generator_stopped", exception))
+
+                    case hp.QueueManagerIterationStop(
+                        context="sync_iterator", exception=exception
+                    ):
+                        got.append(("iterator_stopped", exception))
+                        streamer.breaker.set()
+
+                    case hp.QueueManagerFailure(context="sync_iterator", exception=exception):
+                        got.append(("iterator_failed", exception))
+
+                    case hp.QueueManagerFailure(context="async_generator", exception=exception):
+                        got.append(("generator_failed", exception))
+
+                    case hp.QueueManagerFailure(context="coroutine", exception=exception):
+                        got.append(("coroutine_failed", exception))
+                        feeder.add_task(ctx.loop.create_task(coro_for_task()), context="task")
+
+                    case hp.QueueManagerFailure(context="task", exception=exception):
+                        got.append(("task_failed", exception))
+                        feeder.add_sync_iterator(sync_generator(), context="sync_iterator")
+
+                    case hp.QueueManagerFailure(context="sync_function", exception=exception):
+                        got.append(("func_failed", exception))
+
+                    case hp.QueueManagerStopped(exception=exception):
+                        got.append(("stopped", exception))
+
+                    case _:
+                        raise AssertionError(result)
+
+        assert got == [
+            ("one", "async_generator"),
+            ("two", "async_generator"),
+            ("generator_failed", generator_error),
+            ("generator_stopped", generator_error),
+            ("func_failed", func_error),
+            ("coroutine_failed", coro_error),
+            ("task_failed", task_error),
+            (1, "sync_iterator"),
+            ("iterator_failed", sync_generator_error),
+            ("iterator_stopped", sync_generator_error),
+        ]
