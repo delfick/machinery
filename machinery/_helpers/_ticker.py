@@ -87,12 +87,7 @@ class _TickerOptions[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
                 task.cancel()
                 await self.ctx.wait_for_all(task)
 
-        wait_task = self.ctx.loop.create_task(self.waiter.wait())
-        try:
-            return await self.ctx.wait_for_first(self.ctx, wait_task, self.max_time_reached)
-        finally:
-            wait_task.cancel()
-            await self.ctx.wait_for_all(wait_task)
+        return await self.ctx.wait_for_first(self.ctx, self.waiter, self.max_time_reached)
 
     async def _tick(self) -> AsyncGenerator[tuple[int, float]]:
         start = time.time()

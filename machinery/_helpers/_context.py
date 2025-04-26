@@ -258,21 +258,36 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     ) -> bool:
         return cb in self._callbacks
 
-    async def wait_for_first(self, *futs: _protocols.WaitByCallback[Any]) -> None:
+    async def wait_for_first(self, *waits: _protocols.WaitByCallback[Any] | asyncio.Event) -> None:
         """
         Return without error when the first future to be completed is done.
         """
-        if not futs:
+        if not waits:
             return
-
-        unique = list({id(fut): fut for fut in futs}.values())
 
         waiter = asyncio.Event()
 
-        if any(fut.done() for fut in unique):
+        any_events_done = any(isinstance(wait, asyncio.Event) and wait.is_set() for wait in waits)
+        any_futures_done = any(
+            not isinstance(wait, asyncio.Event) and wait.done() for wait in waits
+        )
+
+        if any_events_done or any_futures_done:
             asyncio.get_running_loop().call_soon(waiter.set)
             await waiter.wait()
             return
+
+        futs: list[_protocols.WaitByCallback[Any]] = []
+        tasks: list[asyncio.Task[Literal[True]]] = []
+        for wait in waits:
+            if isinstance(wait, asyncio.Event):
+                task = self.loop.create_task(wait.wait())
+                tasks.append(task)
+                futs.append(task)
+            else:
+                futs.append(wait)
+
+        unique = list({id(fut): fut for fut in futs}.values())
 
         def done(res: object) -> None:
             waiter.set()
@@ -285,16 +300,29 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         finally:
             for fut in unique:
                 fut.remove_done_callback(done)
+            for task in tasks:
+                task.cancel()
+            await self.wait_for_all(*tasks)
 
-    async def wait_for_all(self, *futs: _protocols.WaitByCallback[Any]) -> None:
+    async def wait_for_all(self, *waits: _protocols.WaitByCallback[Any] | asyncio.Event) -> None:
         """
         Wait for all the futures to be complete and return without error regardless
         of whether the futures completed successfully or not.
 
         If there are no futures, nothing is done and we return without error.
         """
-        if not futs:
+        if not waits:
             return
+
+        futs: list[_protocols.WaitByCallback[Any]] = []
+        tasks: list[asyncio.Task[Literal[True]]] = []
+        for wait in waits:
+            if isinstance(wait, asyncio.Event):
+                task = self.loop.create_task(wait.wait())
+                tasks.append(task)
+                futs.append(task)
+            else:
+                futs.append(wait)
 
         unique = list({id(fut): fut for fut in futs}.values())
 
@@ -320,6 +348,9 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         finally:
             for fut in unique:
                 fut.remove_done_callback(done)
+            for task in tasks:
+                task.cancel()
+            await self.wait_for_all(*tasks)
 
     async def async_with_timeout[T_Ret](
         self,

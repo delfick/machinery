@@ -607,28 +607,27 @@ class TestCTX:
             assert called == [1, 2]
             called.clear()
 
-            with ctx.child(name="2") as c2:
-                with c2.child(name="3") as c3:
-                    c2.cancel()
-                    assert c2.done()
+            with ctx.child(name="2") as c2, ctx.child(name="3") as c3:
+                c2.cancel()
+                assert c2.done()
 
-                    assert called == []
-                    e3 = asyncio.Event()
-                    c3.add_on_done(called.make_on_done(e3, c3, 3, asyncio.CancelledError))
-                    await e3.wait()
-                    assert called == [3]
+                assert called == []
 
-                    e4 = asyncio.Event()
-                    c3.add_done_callback(
-                        called.make_simpler_on_done(e4, 4, asyncio.CancelledError)
-                    )
-                    await e4.wait()
-                    assert called == [3, 4]
+                failure = ValueError("Fail!")
+                c3.set_exception(failure)
+                with pytest.raises(ValueError):
+                    await c3
+                assert called == []
 
-                    c3.set_exception(ValueError("Fail!"))
-                    with pytest.raises(ValueError):
-                        await c3
-                    assert called == [3, 4]
+                e3 = asyncio.Event()
+                c3.add_on_done(called.make_on_done(e3, c3, 3, failure))
+                await e3.wait()
+                assert called == [3]
+
+                e4 = asyncio.Event()
+                c3.add_done_callback(called.make_simpler_on_done(e4, 4, failure))
+                await e4.wait()
+                assert called == [3, 4]
 
             assert called == [3, 4]
             with pytest.raises(asyncio.CancelledError):
@@ -797,10 +796,14 @@ class TestCTX:
                     await e4.wait()
                     assert called == ["complex2", "simple2"]
 
-                    c4.cancel()
-                    with pytest.raises(asyncio.CancelledError):
+                    with pytest.raises(ComputerSaysNo) as e:
                         await c4
+                    assert e.value == error1
                     assert called == ["complex2", "simple2"]
+
+                    with pytest.raises(ComputerSaysNo) as e:
+                        await c2
+                    assert e.value == error2
                 finally:
                     task.cancel()
                     await ctx.wait_for_all(task)
@@ -873,9 +876,9 @@ class TestCTX:
                     await e4.wait()
                     assert called == [1, "complex2", "simple2"]
 
-                    c4.cancel()
-                    with pytest.raises(asyncio.CancelledError):
+                    with pytest.raises(ComputerSaysNo) as e:
                         await c4
+                    assert e.value == error1
                     assert called == [1, "complex2", "simple2"]
                 finally:
                     task.cancel()
@@ -910,7 +913,7 @@ class TestCTX:
                 assert c2.has_direct_done_callback(on_done_1)
                 assert not c3.has_direct_done_callback(on_done_1)
 
-    class TestWaitForFirstFuture:
+    class TestWaitForFirst:
         async def test_it_does_nothing_if_no_futures(self, ctx: hp.CTX) -> None:
             await ctx.wait_for_first()
 
@@ -920,6 +923,7 @@ class TestCTX:
             fut1: asyncio.Future[None] = loop.create_future()
             fut2: asyncio.Future[None] = loop.create_future()
             fut2.set_result(None)
+            event1 = asyncio.Event()
 
             assert not fut1._callbacks
             assert not fut2._callbacks
@@ -931,11 +935,21 @@ class TestCTX:
             assert not fut1.done()
             assert fut2.done()
 
+            await ctx.wait_for_first(fut1, event1, fut2)
+            assert not event1.is_set()
+            assert not fut1.done()
+            assert fut2.done()
+
             await ctx.wait_for_first(fut2, fut1)
             assert not fut1.done()
             assert fut2.done()
 
             await ctx.wait_for_first(fut2, fut1, fut1)
+            assert not fut1.done()
+            assert fut2.done()
+
+            await ctx.wait_for_first(fut2, fut1, fut1, event1)
+            assert not event1.is_set()
             assert not fut1.done()
             assert fut2.done()
 
@@ -945,6 +959,40 @@ class TestCTX:
 
             assert not fut1._callbacks
             assert not fut2._callbacks
+
+            event1.set()
+            await ctx.wait_for_first(event1, fut1)
+            assert event1.is_set()
+            assert not fut1.done()
+
+        async def test_it_can_wait_for_first_event(self, ctx: hp.CTX) -> None:
+            called: list[object] = []
+            async with hp.task_holder(ctx=ctx) as ts:
+                fut1 = ctx.loop.create_future()
+                fut2 = ctx.loop.create_future()
+                event1 = asyncio.Event()
+
+                ready = asyncio.Event()
+                assert not any(event1._waiters)
+
+                async def wait() -> None:
+                    ready.set()
+                    await ctx.wait_for_first(fut1, event1, fut2)
+                    called.append("waited")
+
+                waiting = ts.add_coroutine(wait())
+                await ready.wait()
+                assert called == []
+
+                await asyncio.sleep(0.01)
+                assert any(event1._waiters)
+                event1.set()
+                assert called == []
+
+                await asyncio.sleep(0.01)
+                assert waiting.done()
+                assert not any(event1._waiters)
+                assert called == ["waited"]
 
         async def test_it_returns_when_first_future_completes(
             self, ctx: hp.CTX, loop: asyncio.AbstractEventLoop, subtests: pytest_subtests.SubTests
@@ -1018,7 +1066,7 @@ class TestCTX:
                 fut1 = await run_test(cancel)
                 assert fut1.cancelled()
 
-    class TestWaitForAllFutures:
+    class TestWaitForAll:
         async def test_it_does_nothing_if_no_futures(self, ctx: hp.CTX) -> None:
             await ctx.wait_for_all()
 
@@ -1029,30 +1077,35 @@ class TestCTX:
             fut2: asyncio.Future[None] = loop.create_future()
             fut2.set_result(None)
             fut3: asyncio.Future[None] = loop.create_future()
+            event = asyncio.Event()
 
             assert not fut1._callbacks
             assert not fut2._callbacks
             assert not fut3._callbacks
+            assert not event._waiters
 
             assert not fut1.done()
             assert fut2.done()
             assert not fut3.done()
+            assert not event.is_set()
 
             start = asyncio.Event()
             done = asyncio.Event()
 
             async def waiter() -> None:
                 start.set()
-                await ctx.wait_for_all(fut1, fut2, fut3, fut2)
+                await ctx.wait_for_all(fut1, event, fut2, fut3, fut2)
                 done.set()
 
             waiting = ctx.async_as_background(waiter())
             await start.wait()
+            await asyncio.sleep(0.01)
             assert not done.is_set()
 
             assert fut1._callbacks
             assert not fut2._callbacks
             assert fut3._callbacks
+            assert any(event._waiters)
 
             class ComputerSaysNo(Exception):
                 pass
@@ -1069,19 +1122,31 @@ class TestCTX:
             assert not fut1._callbacks
             assert not fut2._callbacks
             assert fut3._callbacks
+            assert any(event._waiters)
 
             fut3.cancel()
-            await done.wait()
-            assert waiting.done()
+            assert not done.is_set()
+            assert not waiting.done()
             assert fut3.cancelled()
 
             assert not fut1._callbacks
             assert not fut2._callbacks
             assert not fut3._callbacks
+            assert any(event._waiters)
+
+            event.set()
+            await done.wait()
+            assert waiting.done()
+
+            assert not fut1._callbacks
+            assert not fut2._callbacks
+            assert not fut3._callbacks
+            assert not any(event._waiters)
 
             assert fut1.done()
             assert fut2.done()
             assert fut3.done()
+            assert event.is_set()
 
     class TestAsyncWithTimeout:
         @pytest.fixture

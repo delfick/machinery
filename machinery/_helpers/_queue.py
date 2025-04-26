@@ -177,14 +177,7 @@ class _Queue[T_Item, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
             self._waiter.clear()
 
         while True:
-            wait_task = self._ctx.loop.create_task(self._waiter.wait())
-            break_task = self._ctx.loop.create_task(self.breaker.wait())
-            try:
-                await self._ctx.wait_for_first(self._ctx, wait_task, break_task)
-            finally:
-                wait_task.cancel()
-                break_task.cancel()
-                await self._ctx.wait_for_all(wait_task, break_task)
+            await self._ctx.wait_for_first(self._ctx, self._waiter, self.breaker)
 
             if (self._ctx.done() or self.breaker.is_set()) and not self._empty_on_finished:
                 break
