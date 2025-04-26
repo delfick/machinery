@@ -6,16 +6,12 @@ Changelog
 .. _release-0.2.0:
 
 0.2.0 - TBD
-    * Removed ``hp.memoized_property``
-    * Removed ``hp.ExceptionGroup`` in favour of python built in ExceptionGroup
-    * Removed ``hp.AsyncCMMixin`` in favour of being explicit about what it does
-      on classes that use it.
-    * Removed ``hp.Nope``
-    * Removed a number of other helpers that are too random for this library
-    * Removing ``hp.ResultStreamer`` to be replaced with ``hp.QueueFeeder``
-    * Renamed ``hp.ATicker`` to ``hp.Ticker``
-    * Everything is now in terms of ``ctx: hp.CTX`` rather than ``final_future``
+    * Did a giant cleanup. This is effectively a different library with some
+      similar concepts in comparison to the code that was initially copied into
+      this project. Lots has been deleted from that as well or re-imagined
+      a little differently.
     * Machinery is now Python3.13+
+    * Machinery now passes with strict mypy
 
 .. _release-0.1.1:
 
