@@ -10,69 +10,6 @@ from . import _async_mixin, _protocols
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class _TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
-    """
-    An object for managing asynchronous coroutines.
-
-    Usage looks like:
-
-    .. code-block:: python
-
-        from machinery import helpers as hp
-
-
-        async def my_async_program(ctx: hp.CTX) -> None:
-            async def something():
-                await asyncio.sleep(5)
-
-            async with hp.task_holder(ctx=ctx) as ts:
-                ts.add_coroutine(something())
-                ts.add_coroutine(something())
-
-    If you don't want to use the context manager, you can say:
-
-    .. code-block:: python
-
-        from machinery import helpers as hp
-        import contextlib
-
-
-        async def something():
-            await asyncio.sleep(5)
-
-        async def my_async_program(ctx: hp.CTX) -> None:
-            exit_stack = contextlib.AsyncExitStack()
-
-            ts = await exit_stack.enter_async_context(hp.task_holder(ctx=ctx))
-
-            try:
-                ts.add_coroutine(something())
-                ts.add_coroutine(something())
-            finally:
-                await exit_stack.aclose()
-
-    Once your block in the context manager is done the context manager won't
-    exit until all coroutines have finished. During this time you may still
-    use ``ts.add`` or ``ts.add_task`` on the holder.
-
-    If the ``ctx`` is cancelled before all the tasks have completed
-    then the tasks will be cancelled and properly waited on so their finally
-    blocks run before the context manager finishes.
-
-    ``ts.add`` will also return the task object that is made from the coroutine.
-
-    ``ts.add`` also takes a ``silent=False`` parameter, that when True will
-    not log any errors that happen. Otherwise errors will be logged.
-
-    If you already have a task object, you can give it to the holder with
-    ``ts.add_task(my_task)``.
-
-    .. automethod:: add
-
-    .. automethod:: add_task
-
-    .. automethod:: finish
-    """
-
     async def __aexit__(
         self,
         exc_type: type[BaseException] | None = None,
@@ -183,6 +120,63 @@ class _TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 async def task_holder(
     *, ctx: _protocols.CTX, name: str = ""
 ) -> AsyncGenerator[_protocols.TaskHolder]:
+    """
+    An object for managing asynchronous coroutines.
+
+    Usage looks like:
+
+    .. code-block:: python
+
+        from machinery import helpers as hp
+
+
+        async def my_async_program(ctx: hp.CTX) -> None:
+            async def something():
+                await asyncio.sleep(5)
+
+            async with hp.task_holder(ctx=ctx) as ts:
+                ts.add_coroutine(something())
+                ts.add_coroutine(something())
+
+    If you don't want to use the context manager, you can say:
+
+    .. code-block:: python
+
+        from machinery import helpers as hp
+        import contextlib
+
+
+        async def something():
+            await asyncio.sleep(5)
+
+        async def my_async_program(ctx: hp.CTX) -> None:
+            exit_stack = contextlib.AsyncExitStack()
+
+            ts = await exit_stack.enter_async_context(hp.task_holder(ctx=ctx))
+
+            try:
+                ts.add_coroutine(something())
+                ts.add_coroutine(something())
+            finally:
+                await exit_stack.aclose()
+
+    Once your block in the context manager is done the context manager won't
+    exit until all coroutines have finished. During this time you may still
+    use ``ts.add`` or ``ts.add_task`` on the holder.
+
+    If the ``ctx`` is cancelled before all the tasks have completed
+    then the tasks will be cancelled and properly waited on so their finally
+    blocks run before the context manager finishes.
+
+    ``ts.add`` will also return the task object that is made from the coroutine.
+
+    ``ts.add`` also takes a ``silent=False`` parameter, that when True will
+    not log any errors that happen. Otherwise errors will be logged.
+
+    If you already have a task object, you can give it to the holder with
+    ``ts.add_task(my_task)``.
+    """
+
     with ctx.child(name=f"{name}task_holder", prefix=name) as ctx_task_holder:
         async with _TaskHolder(_ctx=ctx_task_holder) as task_holder:
             yield task_holder

@@ -21,28 +21,6 @@ class EnsureItemGetter[T_Item]:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class _SyncQueue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
-    """
-    A simple wrapper around the standard library non async queue.
-
-    Usage is:
-
-    .. code-block:: python
-
-        from machinery import helpers as hp
-
-        ctx: hp.CTX = ...
-
-        with hp.sync_queue(ctx=ctx) as sync_queue:
-            async def results():
-                for result in sync_queue:
-                    print(result)
-
-            ...
-
-            sync_queue.append(something)
-            sync_queue.append(another)
-    """
-
     _ctx: _protocols.CTX[T_Tramp]
     _timeout: float = 0.05
     _empty_on_finished: bool = False
@@ -101,33 +79,6 @@ class _Instruction:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class _Queue[T_Item, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
-    """
-    A custom async queue class.
-
-    Usage is:
-
-    .. code-block:: python
-
-        from machinery import helpers as hp
-
-        ctx: hp.CTX = ...
-
-        with hp.queue(ctx=ctx_queue) as queue:
-
-            async def results():
-                # This will continue forever until ctx is done
-                async for result in queue:
-                    print(result)
-
-            ...
-
-            queue.append(something)
-            queue.append(another)
-
-    Note that the main difference between this and the standard library
-    asyncio.Queue is that this one does not have the ability to impose limits.
-    """
-
     class Done:
         pass
 
@@ -256,6 +207,32 @@ def _queue[T_Item](
     name: str = "",
     item_ensurer: _protocols.QueueItemDef[T_Item] | None = None,
 ) -> Iterator[_protocols.Queue[T_Item]] | Iterator[_protocols.Queue[object]]:
+    """
+    A custom async queue class.
+
+    Usage is:
+
+    .. code-block:: python
+
+        from machinery import helpers as hp
+
+        ctx: hp.CTX = ...
+
+        with hp.queue(ctx=ctx_queue) as queue:
+
+            async def results():
+                # This will continue forever until ctx is done
+                async for result in queue:
+                    print(result)
+
+            ...
+
+            queue.append(something)
+            queue.append(another)
+
+    Note that the main difference between this and the standard library
+    asyncio.Queue is that this one does not have the ability to impose limits.
+    """
     with ctx.child(name=f"{name}queue", prefix=name) as ctx_queue:
         if item_ensurer is None:
             yield _Queue(
@@ -299,6 +276,27 @@ def _sync_queue[T_Item = object](
     name: str = "",
     item_ensurer: _protocols.QueueItemDef[T_Item] | None = None,
 ) -> Iterator[_protocols.SyncQueue[T_Item]] | Iterator[_protocols.SyncQueue[object]]:
+    """
+    A simple wrapper around the standard library non async queue.
+
+    Usage is:
+
+    .. code-block:: python
+
+        from machinery import helpers as hp
+
+        ctx: hp.CTX = ...
+
+        with hp.sync_queue(ctx=ctx) as sync_queue:
+            async def results():
+                for result in sync_queue:
+                    print(result)
+
+            ...
+
+            sync_queue.append(something)
+            sync_queue.append(another)
+    """
     with ctx.child(name=f"{name}sync_queue", prefix=name) as ctx_sync_queue:
         if item_ensurer is None:
             yield _SyncQueue(
