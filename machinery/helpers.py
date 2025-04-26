@@ -18,6 +18,7 @@ sync_queue = _helpers.queue.sync_queue
 task_holder = _helpers.task_holder.task_holder
 
 queue_manager = _helpers.queue_feeder.queue_manager
+QueueInput = _helpers.queue_feeder.QueueInput
 QueueManagerStopped = _helpers.queue_feeder.QueueManagerStopped
 QueueManagerSuccess = _helpers.queue_feeder.QueueManagerSuccess
 QueueManagerFailure = _helpers.queue_feeder.QueueManagerFailure

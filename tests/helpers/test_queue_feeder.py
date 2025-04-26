@@ -1,10 +1,12 @@
 import asyncio
+import dataclasses
 import logging
-from collections.abc import AsyncGenerator, Iterator
+from collections.abc import AsyncGenerator, Callable, Coroutine, Iterator
 
 import pytest
 
 from machinery import helpers as hp
+from machinery import test_helpers as thp
 
 
 @pytest.fixture
@@ -520,4 +522,180 @@ class TestQueueFeeder:
             (1, "sync_iterator"),
             ("iterator_failed", sync_generator_error),
             ("iterator_stopped", sync_generator_error),
+        ]
+
+    async def test_it_can_extend_results(self, ctx: hp.CTX) -> None:
+        got: list[object] = []
+
+        def sync_generator() -> Iterator[int]:
+            yield 0
+            yield 1
+            yield 2
+
+        sync_gen = sync_generator()
+
+        def func() -> str:
+            return "func_result"
+
+        async def async_func1() -> str:
+            await futs[4]
+            return "async_func1_result"
+
+        async def async_func2() -> str:
+            await futs[7]
+            return "async_func2_result"
+
+        async_func2_coro = async_func2()
+
+        async def async_func3() -> Coroutine[None, None, str]:
+            await futs[5]
+            return async_func2_coro
+
+        async_func3_coro = async_func3()
+        async_func3_task = ctx.loop.create_task(async_func3_coro)
+
+        async def generator() -> AsyncGenerator[object]:
+            await futs[1]
+            yield func
+            await futs[2]
+            yield "two"
+            await futs[3]
+            yield async_func1
+            yield async_func3_task
+            yield "three"
+            await futs[6]
+            yield sync_gen
+            await futs[8]
+            yield ["l3", "l4"]
+
+        gen = generator()
+
+        closure = locals()
+
+        async with thp.future_dominoes(expected=8, loop=ctx.loop) as futs:
+            async with hp.queue_manager(ctx=ctx, make_empty_context=lambda: "") as (
+                streamer,
+                feeder,
+            ):
+                feeder.add_async_generator(gen, context="generator")
+                feeder.set_as_finished_if_out_of_sources()
+                futs.begin()
+
+                async for result in streamer:
+                    match result:
+                        case hp.QueueManagerSuccess(sources=sources, value=value, context=context):
+                            got.append((value, context, sources))
+                        case hp.QueueManagerIterationStop(sources=sources, context=context):
+                            got.append(("iteration_stop", context, sources))
+                        case hp.QueueManagerStopped():
+                            got.append("stopped")
+                        case _:
+                            raise AssertionError(result)
+
+        @dataclasses.dataclass
+        class CoroFor:
+            func: Callable[..., Coroutine[None, None, object]]
+
+            got: object = dataclasses.field(init=False)
+
+            def __eq__(self, o: object) -> bool:
+                self.got = o
+                return isinstance(o, Coroutine) and self.func == closure[o.cr_code.co_name]
+
+            def __repr__(self) -> str:
+                if hasattr(self, "got"):
+                    return repr(self.got)
+                else:
+                    return f"<CoroFor({self.func})>"
+
+        @dataclasses.dataclass
+        class TaskFor:
+            coro: CoroFor
+
+            got: object = dataclasses.field(init=False)
+
+            def __eq__(self, o: object) -> bool:
+                self.got = o
+                return isinstance(o, asyncio.Task) and self.coro == o.get_coro()
+
+            def __repr__(self) -> str:
+                if hasattr(self, "got"):
+                    return repr(self.got)
+                else:
+                    return f"<TaskFor({self.coro})>"
+
+        assert got == [
+            (
+                "func_result",
+                "generator",
+                (
+                    (hp.QueueInput.SYNC_FUNCTION, func),
+                    (hp.QueueInput.ASYNC_GENERATOR, gen),
+                ),
+            ),
+            (
+                "two",
+                "generator",
+                ((hp.QueueInput.ASYNC_GENERATOR, gen),),
+            ),
+            (
+                "three",
+                "generator",
+                ((hp.QueueInput.ASYNC_GENERATOR, gen),),
+            ),
+            (
+                "async_func1_result",
+                "generator",
+                (
+                    (hp.QueueInput.TASK, TaskFor(CoroFor(async_func1))),
+                    (hp.QueueInput.COROUTINE, CoroFor(async_func1)),
+                    (hp.QueueInput.SYNC_FUNCTION, async_func1),
+                    (hp.QueueInput.ASYNC_GENERATOR, gen),
+                ),
+            ),
+            (
+                0,
+                "generator",
+                (
+                    (hp.QueueInput.SYNC_GENERATOR, sync_gen),
+                    (hp.QueueInput.ASYNC_GENERATOR, gen),
+                ),
+            ),
+            (
+                1,
+                "generator",
+                (
+                    (hp.QueueInput.SYNC_GENERATOR, sync_gen),
+                    (hp.QueueInput.ASYNC_GENERATOR, gen),
+                ),
+            ),
+            (
+                2,
+                "generator",
+                (
+                    (hp.QueueInput.SYNC_GENERATOR, sync_gen),
+                    (hp.QueueInput.ASYNC_GENERATOR, gen),
+                ),
+            ),
+            (
+                "iteration_stop",
+                "generator",
+                (
+                    (hp.QueueInput.SYNC_GENERATOR, sync_gen),
+                    (hp.QueueInput.ASYNC_GENERATOR, gen),
+                ),
+            ),
+            (
+                "async_func2_result",
+                "generator",
+                (
+                    (hp.QueueInput.TASK, TaskFor(CoroFor(async_func2))),
+                    (hp.QueueInput.COROUTINE, async_func2_coro),
+                    (hp.QueueInput.TASK, async_func3_task),
+                    (hp.QueueInput.ASYNC_GENERATOR, gen),
+                ),
+            ),
+            (["l3", "l4"], "generator", ((hp.QueueInput.ASYNC_GENERATOR, gen),)),
+            ("iteration_stop", "generator", ((hp.QueueInput.ASYNC_GENERATOR, gen),)),
+            "stopped",
         ]

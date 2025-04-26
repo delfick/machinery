@@ -128,7 +128,9 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
         context: T_QueueContext | None = None,
         _parent_source: _QueueSource | None = None,
     ) -> None:
-        source = _QueueSource(input_type=QueueInput.SYNC_FUNCTION, source=func)
+        source = _QueueSource(
+            input_type=QueueInput.SYNC_FUNCTION, source=func, parent_source=_parent_source
+        )
         self._sources.append(source)
 
         try:
