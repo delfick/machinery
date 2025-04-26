@@ -136,19 +136,17 @@ class _TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
                 if self._ts:
                     if self._ctx.done():
-                        await self._ctx.wait_for_all_futures(self._ctx, *self._ts)
+                        await self._ctx.wait_for_all(self._ctx, *self._ts)
                     else:
-                        await self._ctx.wait_for_first_future(self._ctx, *self._ts)
+                        await self._ctx.wait_for_first(self._ctx, *self._ts)
 
                     self._ts[:] = [t for t in self._ts if not t.done()]
         finally:
             if self._cleaner:
                 self._cleaner[0].cancel()
-                await self._ctx.wait_for_all_futures(*self._cleaner)
+                await self._ctx.wait_for_all(*self._cleaner)
 
-            await self._ctx.wait_for_all_futures(
-                self._ctx.async_as_background(self._perform_clean())
-            )
+            await self._ctx.wait_for_all(self._ctx.async_as_background(self._perform_clean()))
 
     @property
     def pending(self) -> int:
@@ -175,7 +173,7 @@ class _TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
             else:
                 remaining.append(t)
 
-        await self._ctx.wait_for_all_futures(*destroyed)
+        await self._ctx.wait_for_all(*destroyed)
         self._ts[:] = remaining + [
             t for t in self._ts if t not in destroyed and t not in remaining
         ]

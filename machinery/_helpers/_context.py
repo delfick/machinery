@@ -258,7 +258,7 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     ) -> bool:
         return cb in self._callbacks
 
-    async def wait_for_first_future(self, *futs: _protocols.WaitByCallback[Any]) -> None:
+    async def wait_for_first(self, *futs: _protocols.WaitByCallback[Any]) -> None:
         """
         Return without error when the first future to be completed is done.
         """
@@ -286,7 +286,7 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
             for fut in unique:
                 fut.remove_done_callback(done)
 
-    async def wait_for_all_futures(self, *futs: _protocols.WaitByCallback[Any]) -> None:
+    async def wait_for_all(self, *futs: _protocols.WaitByCallback[Any]) -> None:
         """
         Wait for all the futures to be complete and return without error regardless
         of whether the futures completed successfully or not.
@@ -373,7 +373,7 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         finally:
             handle.cancel()
             task.cancel()
-            await self.wait_for_all_futures(task)
+            await self.wait_for_all(task)
 
     def async_as_background[T_Ret](
         self, coro: Coroutine[object, object, T_Ret], *, silent: bool = True
@@ -411,7 +411,7 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
                 await fut
                 return
 
-        await self.wait_for_all_futures(self)
+        await self.wait_for_all(self)
 
         for fut in reversed(self._futs):
             if fut.done():

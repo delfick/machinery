@@ -59,7 +59,7 @@ class _Domino[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
         await self._started.wait()
 
         for retrieved, fut in self._requirements:
-            await self._ctx.wait_for_all_futures(retrieved, fut)
+            await self._ctx.wait_for_all(retrieved, fut)
 
     def add_done_callback(
         self, cb: Callable[[hp.protocols.FutureStatus[None]], None]

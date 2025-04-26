@@ -531,7 +531,7 @@ class TestCTX:
                             await waiter1
                         finally:
                             task.cancel()
-                            await ctx.wait_for_all_futures(task)
+                            await ctx.wait_for_all(task)
 
             class ComputerSaysNo(Exception):
                 pass
@@ -558,7 +558,7 @@ class TestCTX:
                             await waiter2
                         finally:
                             task.cancel()
-                            await ctx.wait_for_all_futures(task)
+                            await ctx.wait_for_all(task)
 
             waiter3: asyncio.Future[None] = ctx.loop.create_future()
             ctx.tramp.set_future_name(waiter3, name="waiter3")
@@ -582,7 +582,7 @@ class TestCTX:
                             await waiter3
                         finally:
                             task.cancel()
-                            await ctx.wait_for_all_futures(task)
+                            await ctx.wait_for_all(task)
 
     class TestCallbackManagement:
         async def test_it_calls_callback_if_ctx_already_done(self, ctx: hp.CTX) -> None:
@@ -729,7 +729,7 @@ class TestCTX:
                     assert called == [1, "complex1", "simple1"]
                 finally:
                     task.cancel()
-                    await ctx.wait_for_all_futures(task)
+                    await ctx.wait_for_all(task)
 
             assert called == [1, "complex1", "simple1"]
             with pytest.raises(ComputerSaysNo):
@@ -803,7 +803,7 @@ class TestCTX:
                     assert called == ["complex2", "simple2"]
                 finally:
                     task.cancel()
-                    await ctx.wait_for_all_futures(task)
+                    await ctx.wait_for_all(task)
 
             assert called == ["complex2", "simple2"]
             called.clear()
@@ -879,7 +879,7 @@ class TestCTX:
                     assert called == [1, "complex2", "simple2"]
                 finally:
                     task.cancel()
-                    await ctx.wait_for_all_futures(task)
+                    await ctx.wait_for_all(task)
 
             assert called == [1, "complex2", "simple2"]
             called.clear()
@@ -912,7 +912,7 @@ class TestCTX:
 
     class TestWaitForFirstFuture:
         async def test_it_does_nothing_if_no_futures(self, ctx: hp.CTX) -> None:
-            await ctx.wait_for_first_future()
+            await ctx.wait_for_first()
 
         async def test_it_returns_if_any_futures_already_done(
             self, ctx: hp.CTX, loop: asyncio.AbstractEventLoop
@@ -927,19 +927,19 @@ class TestCTX:
             assert not fut1.done()
             assert fut2.done()
 
-            await ctx.wait_for_first_future(fut1, fut2)
+            await ctx.wait_for_first(fut1, fut2)
             assert not fut1.done()
             assert fut2.done()
 
-            await ctx.wait_for_first_future(fut2, fut1)
+            await ctx.wait_for_first(fut2, fut1)
             assert not fut1.done()
             assert fut2.done()
 
-            await ctx.wait_for_first_future(fut2, fut1, fut1)
+            await ctx.wait_for_first(fut2, fut1, fut1)
             assert not fut1.done()
             assert fut2.done()
 
-            await ctx.wait_for_first_future(fut2, fut2, fut1)
+            await ctx.wait_for_first(fut2, fut2, fut1)
             assert not fut1.done()
             assert fut2.done()
 
@@ -960,7 +960,7 @@ class TestCTX:
 
                 async def wait() -> None:
                     start.set()
-                    await ctx.wait_for_first_future(fut1, fut2)
+                    await ctx.wait_for_first(fut1, fut2)
                     assert fut1.done()
                     assert not fut2.done()
                     assert not fut1._callbacks
@@ -1020,7 +1020,7 @@ class TestCTX:
 
     class TestWaitForAllFutures:
         async def test_it_does_nothing_if_no_futures(self, ctx: hp.CTX) -> None:
-            await ctx.wait_for_all_futures()
+            await ctx.wait_for_all()
 
         async def test_it_only_returns_if_all_futures_are_done(
             self, ctx: hp.CTX, loop: asyncio.AbstractEventLoop
@@ -1043,7 +1043,7 @@ class TestCTX:
 
             async def waiter() -> None:
                 start.set()
-                await ctx.wait_for_all_futures(fut1, fut2, fut3, fut2)
+                await ctx.wait_for_all(fut1, fut2, fut3, fut2)
                 done.set()
 
             waiting = ctx.async_as_background(waiter())
