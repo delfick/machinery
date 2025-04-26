@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import AsyncGenerator, Callable, Sequence
+from collections.abc import AsyncGenerator, Sequence
 
 from . import _protocols
 
@@ -21,46 +21,6 @@ async def stop_async_generator[T_Send](
             pass
     finally:
         await gen.aclose()
-
-
-def transfer_result[T_Res](
-    fut: asyncio.Future[T_Res],
-    errors_only: bool = False,
-    process: Callable[[_protocols.FutureStatus[T_Res], asyncio.Future[T_Res]], None] | None = None,
-) -> _protocols.FutureCallback[T_Res]:
-    """
-    Return a ``done_callback`` that transfers the result, errors or cancellation
-    to the provided future.
-
-    If errors_only is ``True`` then it will not transfer a successful result
-    to the provided future.
-
-    If process is provided, then when the coroutine is done, process will be
-    called with the result of the coroutine and the future that result is being
-    transferred to.
-    """
-
-    def transfer(res: _protocols.FutureStatus[T_Res]) -> None:
-        if res.cancelled():
-            fut.cancel()
-            return
-
-        exc = res.exception()
-
-        if fut.done():
-            return
-
-        if exc is not None:
-            fut.set_exception(exc)
-            return
-
-        if not errors_only:
-            fut.set_result(res.result())
-
-        if process:
-            process(res, fut)
-
-    return transfer
 
 
 def noncancelled_results_from_futs[T_Ret](
