@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import types
-from collections.abc import AsyncGenerator, Callable, Coroutine, Iterator
+from collections.abc import AsyncGenerator, Callable, Coroutine, Iterable, Iterator
 from typing import TYPE_CHECKING, Any, Literal, Protocol, Self, cast
 
 
@@ -182,6 +182,8 @@ class Queue[T_Item = object](Protocol):
 
     def append(self, item: T_Item, *, priority: bool = False) -> None: ...
 
+    def append_instruction(self, cb: Callable[[], None], *, priority: bool = False) -> None: ...
+
     def __aiter__(self) -> AsyncGenerator[T_Item]: ...
 
     @property
@@ -202,7 +204,10 @@ class QueueFeeder[T_QueueContext](Protocol):
     ) -> None: ...
 
     def add_sync_iterator(
-        self, iterator: Iterator[object], *, context: T_QueueContext | None = None
+        self,
+        iterator: Iterable[object] | Iterator[object],
+        *,
+        context: T_QueueContext | None = None,
     ) -> None: ...
 
     def add_value(self, value: object, *, context: T_QueueContext | None = None) -> None: ...

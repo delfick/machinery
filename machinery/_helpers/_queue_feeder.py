@@ -2,8 +2,17 @@ import asyncio
 import contextlib
 import dataclasses
 import enum
+import functools
 import inspect
-from collections.abc import AsyncGenerator, Callable, Coroutine, Generator, Iterator, Sequence
+from collections.abc import (
+    AsyncGenerator,
+    Callable,
+    Coroutine,
+    Generator,
+    Iterable,
+    Iterator,
+    Sequence,
+)
 from typing import Optional
 
 from . import _protocols, _queue, _task_holder
@@ -140,7 +149,7 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
 
     def add_sync_iterator(
         self,
-        iterator: Iterator[object],
+        iterator: Iterable[object] | Iterator[object],
         *,
         context: T_QueueContext | None = None,
         _parent_source: _QueueSource | None = None,
@@ -150,44 +159,22 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
                 input_type=QueueInput.SYNC_GENERATOR, source=iterator, parent_source=_parent_source
             )
         else:
+            if isinstance(iterator, Iterable):
+                iterator = iter(iterator)
+
             source = _QueueSource(
                 input_type=QueueInput.SYNC_ITERATOR, source=iterator, parent_source=_parent_source
             )
 
         self._sources.append(source)
 
-        async def process_iterator() -> None:
-            while True:
-                try:
-                    nxt = next(iterator)
-                except StopIteration:
-                    break
-                except Exception as exc:
-                    event = asyncio.Event()
-                    self._ctx.loop.call_soon(event.set)
-                    await event.wait()
-                    self._queue.append(
-                        QueueManagerFailure(
-                            sources=source.sources,
-                            exception=exc,
-                            context=context if context is not None else self._make_empty_context(),
-                        )
-                    )
-                    break
-                else:
-                    event = asyncio.Event()
-                    self._ctx.loop.call_soon(event.set)
-                    await event.wait()
-                    self._extend_result(result=nxt, source=source, context=context)
-
-        def on_done(res: _protocols.FutureStatus[None]) -> None:
+        def on_done(exc: BaseException | None = None) -> None:
+            if source.finished.is_set():
+                return
             source.finished.set()
 
-            exc: BaseException | None
-            if res.cancelled():
+            if exc is None and self._ctx.cancelled():
                 exc = asyncio.CancelledError()
-            else:
-                exc = res.exception()
 
             self._queue.append(
                 QueueManagerIterationStop(
@@ -199,8 +186,30 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
             source.finished.set()
             self._clear_sources()
 
-        task = self._task_holder.add_coroutine(process_iterator())
-        task.add_done_callback(on_done)
+        def get_next() -> None:
+            try:
+                nxt = next(iterator)
+            except StopIteration:
+                on_done()
+            except Exception as exc:
+                self._queue.append(
+                    QueueManagerFailure(
+                        sources=source.sources,
+                        exception=exc,
+                        context=context if context is not None else self._make_empty_context(),
+                    )
+                )
+                on_done(exc)
+                self._queue.append_instruction(get_next)
+            else:
+                self._queue.append_instruction(
+                    functools.partial(
+                        self._extend_result, result=nxt, source=source, context=context
+                    )
+                )
+                self._queue.append_instruction(get_next)
+
+        self._ctx.loop.call_later(0, get_next)
         self._clear_sources()
 
     def add_value(

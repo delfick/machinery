@@ -95,6 +95,11 @@ class _SyncQueue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
+class _Instruction:
+    cb: Callable[[], None]
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class _Queue[T_Item, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     """
     A custom async queue class.
@@ -130,7 +135,7 @@ class _Queue[T_Item, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     _empty_on_finished: bool = False
 
     _waiter: asyncio.Event = dataclasses.field(default_factory=asyncio.Event, init=False)
-    _collection: collections.deque[T_Item] = dataclasses.field(
+    _collection: collections.deque[T_Item | _Instruction] = dataclasses.field(
         default_factory=collections.deque, init=False
     )
     _after_yielded: list[Callable[["_protocols.LimitedQueue[T_Item]"], None]] = dataclasses.field(
@@ -156,6 +161,13 @@ class _Queue[T_Item, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         self, process: Callable[["_protocols.LimitedQueue[T_Item]"], None], /
     ) -> None:
         self._after_yielded.append(process)
+
+    def append_instruction(self, cb: Callable[[], None], *, priority: bool = False) -> None:
+        if priority:
+            self._collection.insert(0, _Instruction(cb=cb))
+        else:
+            self._collection.append(_Instruction(cb=cb))
+        self._waiter.set()
 
     def append(self, item: T_Item, *, priority: bool = False) -> None:
         if self._item_ensurer is not _ensure_item:
@@ -195,14 +207,21 @@ class _Queue[T_Item, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
             if not self._collection:
                 self._waiter.clear()
 
-            yield nxt
+            if isinstance(nxt, _Instruction):
+                nxt.cb()
+            else:
+                yield nxt
 
-            for process in self._after_yielded:
-                process(self)
+                for process in self._after_yielded:
+                    process(self)
 
     def remaining(self) -> Iterator[T_Item]:
         while self._collection:
-            yield self._collection.popleft()
+            nxt = self._collection.popleft()
+            if isinstance(nxt, _Instruction):
+                nxt.cb()
+            else:
+                yield nxt
 
     def add_done_callback(
         self, cb: Callable[[_protocols.FutureStatus[None]], None]

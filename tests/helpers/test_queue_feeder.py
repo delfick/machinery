@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from collections.abc import Iterator
 
@@ -138,3 +139,143 @@ class TestQueueFeeder:
                         raise AssertionError(result)
 
         assert got == ["ONE: 1", "TWO: 2", "TWO: 3", "stopped"]
+
+    async def test_it_can_feed_in_a_task(self, ctx: hp.CTX) -> None:
+        got: list[object] = []
+
+        ready = asyncio.Event()
+
+        async with hp.queue_manager(ctx=ctx, make_empty_context=lambda: "") as (streamer, feeder):
+
+            async def stuff() -> str:
+                await ready.wait()
+                return "hi"
+
+            feeder.add_task(ctx.loop.create_task(stuff()), context="some_context")
+            feeder.add_value("ready")
+            feeder.set_as_finished_if_out_of_sources()
+
+            async for result in streamer:
+                match result:
+                    case hp.QueueManagerSuccess(value=value, context=context):
+                        got.append((value, context))
+
+                match result:
+                    case hp.QueueManagerSuccess(value="ready"):
+                        ready.set()
+                    case hp.QueueManagerSuccess(context="some_context"):
+                        pass
+                    case hp.QueueManagerStopped():
+                        got.append("stopped")
+                    case _:
+                        raise AssertionError(result)
+
+        assert got == [("ready", ""), ("hi", "some_context"), "stopped"]
+
+    async def test_it_can_feed_in_a_coroutine(self, ctx: hp.CTX) -> None:
+        got: list[object] = []
+
+        ready = asyncio.Event()
+
+        async with hp.queue_manager(ctx=ctx, make_empty_context=lambda: "") as (streamer, feeder):
+
+            async def stuff() -> str:
+                await ready.wait()
+                return "hi"
+
+            feeder.add_coroutine(stuff(), context="some_context")
+            feeder.add_value("ready")
+            feeder.set_as_finished_if_out_of_sources()
+
+            async for result in streamer:
+                match result:
+                    case hp.QueueManagerSuccess(value=value, context=context):
+                        got.append((value, context))
+
+                match result:
+                    case hp.QueueManagerSuccess(value="ready"):
+                        ready.set()
+                    case hp.QueueManagerSuccess(context="some_context"):
+                        pass
+                    case hp.QueueManagerStopped():
+                        got.append("stopped")
+                    case _:
+                        raise AssertionError(result)
+
+        assert got == [("ready", ""), ("hi", "some_context"), "stopped"]
+
+    async def test_it_can_feed_in_a_synchronous_function(self, ctx: hp.CTX) -> None:
+        got: list[object] = []
+
+        async with hp.queue_manager(ctx=ctx, make_empty_context=lambda: "") as (streamer, feeder):
+
+            def stuff() -> str:
+                return "hi"
+
+            def other() -> str:
+                return "other"
+
+            feeder.add_sync_function(stuff, context="some_context")
+            feeder.add_value("some_value")
+            feeder.set_as_finished_if_out_of_sources()
+
+            async for result in streamer:
+                match result:
+                    case hp.QueueManagerSuccess(value=value, context=context):
+                        got.append((value, context))
+                        if value == "hi":
+                            feeder.add_sync_function(other, context="things")
+                    case hp.QueueManagerStopped():
+                        got.append("stopped")
+                    case _:
+                        raise AssertionError(result)
+
+        assert got == [("hi", "some_context"), ("some_value", ""), ("other", "things"), "stopped"]
+
+    async def test_it_can_feed_in_a_synchronous_iterator(self, ctx: hp.CTX) -> None:
+        got: list[object] = []
+
+        async with hp.queue_manager(ctx=ctx, make_empty_context=lambda: "") as (streamer, feeder):
+
+            def generator() -> Iterator[str]:
+                yield "one"
+                yield "two"
+                yield "three"
+
+            feeder.add_sync_iterator(generator(), context="a_generator")
+            feeder.add_value("some_value")
+            feeder.add_sync_iterator([1, 2, "three", 4], context="a_list")
+            feeder.set_as_finished_if_out_of_sources()
+
+            async for result in streamer:
+                match result:
+                    case hp.QueueManagerSuccess(value=value, context=context):
+                        got.append((value, context))
+                        if value == 2 and context == "a_list":
+                            feeder.add_value("another_value")
+                        elif value == "two" and context == "a_generator":
+                            feeder.add_value("yo")
+                    case hp.QueueManagerIterationStop(context="a_generator"):
+                        got.append("gen_stopped")
+                    case hp.QueueManagerIterationStop(context="a_list"):
+                        got.append("list_stopped")
+                    case hp.QueueManagerStopped():
+                        got.append("stopped")
+                    case _:
+                        raise AssertionError(result)
+
+        assert got == [
+            ("some_value", ""),
+            ("one", "a_generator"),
+            (1, "a_list"),
+            ("two", "a_generator"),
+            (2, "a_list"),
+            ("yo", ""),
+            ("three", "a_generator"),
+            ("gen_stopped"),
+            ("another_value", ""),
+            ("three", "a_list"),
+            (4, "a_list"),
+            ("list_stopped"),
+            "stopped",
+        ]
