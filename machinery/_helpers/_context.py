@@ -139,7 +139,7 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     loop: asyncio.AbstractEventLoop
     tramp: T_Tramp
 
-    futs: Sequence[asyncio.Future[None]]
+    _futs: Sequence[asyncio.Future[None]]
 
     _callbacks: MutableMapping[Hashable, _CTXCallback[None, T_Tramp]] = dataclasses.field(
         init=False, default_factory=dict
@@ -156,17 +156,17 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         tramp.set_future_name(final_future, name=f"FUT{{{name}}}")
         final_future.add_done_callback(tramp.silent_reporter)
 
-        return cls(name=name, tramp=tramp, loop=loop, futs=(final_future,))
+        return cls(name=name, tramp=tramp, loop=loop, _futs=(final_future,))
 
     def __hash__(self) -> int:
-        return hash((self.name, self.loop, self.tramp, tuple(self.futs)))
+        return hash((self.name, self.loop, self.tramp, tuple(self._futs)))
 
     def __enter__(self) -> Self:
         return self
 
     def __repr__(self) -> str:
         fut_results: list[str] = []
-        for fut in self.futs:
+        for fut in self._futs:
             fut_name = self.tramp.get_future_name(fut)
             if not fut.done():
                 fut_results.append(f"PENDING({fut_name})")
@@ -188,27 +188,27 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         self.cancel()
 
     def done(self) -> bool:
-        return any(fut.done() for fut in self.futs)
+        return any(fut.done() for fut in self._futs)
 
     def set_exception(self, exc: BaseException) -> None:
-        self.futs[-1].set_exception(exc)
+        self._futs[-1].set_exception(exc)
 
     def cancel(self) -> bool:
-        return self.futs[-1].cancel()
+        return self._futs[-1].cancel()
 
     def cancelled(self) -> bool:
-        for fut in reversed(self.futs):
+        for fut in reversed(self._futs):
             if fut.done():
                 return fut.cancelled()
 
-        return self.futs[0].cancelled()
+        return self._futs[0].cancelled()
 
     def exception(self) -> BaseException | None:
-        for fut in reversed(self.futs):
+        for fut in reversed(self._futs):
             if fut.done():
                 return fut.exception()
 
-        return self.futs[0].exception()
+        return self._futs[0].exception()
 
     def add_on_done(
         self,
@@ -220,14 +220,14 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         if index is None:
             index = callback
 
-        for fut in reversed(self.futs):
+        for fut in reversed(self._futs):
             if fut.done():
                 fut.add_done_callback(callback)
                 return callback
 
         self._callbacks[index] = callback
 
-        for fut in self.futs:
+        for fut in self._futs:
             fut.add_done_callback(callback)
 
         return callback
@@ -243,7 +243,7 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     def remove_done_callback(self, cb: Callable[[_protocols.FutureStatus[None]], None]) -> int:
         counts: list[int] = []
         ctx_callable = self._callbacks.pop(cb, None)
-        for fut in self.futs:
+        for fut in self._futs:
             counts.append(fut.remove_done_callback(cb))
             if ctx_callable is not None:
                 counts.append(fut.remove_done_callback(ctx_callable))
@@ -396,21 +396,21 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
             self,
             name=f"{self.name}-->{name}",
             tramp=self.tramp,
-            futs=tuple([*self.futs, final_future]),
+            _futs=tuple([*self._futs, final_future]),
         )
 
     def __await__(self) -> Generator[None]:
         return self._wait().__await__()
 
     async def _wait(self) -> None:
-        for fut in reversed(self.futs):
+        for fut in reversed(self._futs):
             if fut.done():
                 await fut
                 return
 
         await self.wait_for_all_futures(self)
 
-        for fut in reversed(self.futs):
+        for fut in reversed(self._futs):
             if fut.done():
                 await fut
                 return
