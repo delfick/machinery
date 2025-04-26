@@ -297,30 +297,9 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
         )
         self._sources.append(source)
 
-        async def process_generator() -> None:
-            while True:
-                try:
-                    nxt = await agen.__anext__()
-                except StopAsyncIteration:
-                    break
-                except Exception as exc:
-                    self._queue.append(
-                        QueueManagerFailure(
-                            sources=source.sources,
-                            exception=exc,
-                            context=context if context is not None else self._make_empty_context(),
-                        )
-                    )
-                    break
-                else:
-                    self._extend_result(result=nxt, source=source, context=context)
-
-        def on_done(res: _protocols.FutureStatus[None]) -> None:
-            exc: BaseException | None
-            if res.cancelled():
+        def on_done(exc: BaseException | None = None) -> None:
+            if exc is None and self._ctx.cancelled():
                 exc = asyncio.CancelledError()
-            else:
-                exc = res.exception()
 
             self._queue.append(
                 QueueManagerIterationStop(
@@ -332,8 +311,32 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
             source.finished.set()
             self._clear_sources()
 
-        task = self._task_holder.add_coroutine(process_generator())
-        task.add_done_callback(on_done)
+        def get_next_instruction() -> None:
+            self._task_holder.add_coroutine(get_next())
+
+        async def get_next() -> None:
+            try:
+                nxt = await agen.__anext__()
+            except StopAsyncIteration:
+                on_done()
+            except Exception as exc:
+                self._queue.append(
+                    QueueManagerFailure(
+                        sources=source.sources,
+                        exception=exc,
+                        context=context if context is not None else self._make_empty_context(),
+                    )
+                )
+                self._queue.append_instruction(get_next_instruction)
+            else:
+                self._queue.append_instruction(
+                    functools.partial(
+                        self._extend_result, result=nxt, source=source, context=context
+                    )
+                )
+                self._queue.append_instruction(get_next_instruction)
+
+        self._queue.append_instruction(get_next_instruction)
         self._clear_sources()
 
     def _on_queue_stopped(self, res: _protocols.FutureStatus[None]) -> None:
