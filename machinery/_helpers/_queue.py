@@ -1,9 +1,10 @@
 import asyncio
 import collections
+import contextlib
 import dataclasses
 import queue as stdqueue
 from collections.abc import AsyncGenerator, Callable, Iterator
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, cast, overload
 
 from . import _protocols
 
@@ -21,23 +22,21 @@ class _SyncQueue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
         ctx: hp.CTX = ...
 
-        with ctx.child("SyncQueue") as ctx_sync_queue:
-
-            queue = hp.sync_queue(ctx=ctx_sync_queue)
-
+        with hp.sync_queue(ctx=ctx) as sync_queue:
             async def results():
-                for result in queue:
+                for result in sync_queue:
                     print(result)
 
             ...
 
-            queue.append(something)
-            queue.append(another)
+            sync_queue.append(something)
+            sync_queue.append(another)
     """
 
     _ctx: _protocols.CTX[T_Tramp]
     _timeout: float = 0.05
     _empty_on_finished: bool = False
+    _item_ensurer: _protocols.QueueItemDef[T_Item]
 
     _collection: stdqueue.Queue[T_Item] = dataclasses.field(
         default_factory=stdqueue.Queue, init=False
@@ -50,7 +49,7 @@ class _SyncQueue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         return self._collection.qsize()
 
     def append(self, item: T_Item) -> None:
-        self._collection.put(item)
+        self._collection.put(self._item_ensurer(item))
 
     def __iter__(self) -> Iterator[T_Item]:
         return iter(self.get_all())
@@ -83,7 +82,7 @@ class _SyncQueue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class _Queue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
+class _Queue[T_Item, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     """
     A custom async queue class.
 
@@ -95,8 +94,7 @@ class _Queue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
         ctx: hp.CTX = ...
 
-        with ctx.child(name="Queue") as ctx_queue:
-            queue = hp.queue(ctx=ctx_queue)
+        with hp.queue(ctx=ctx_queue) as queue:
 
             async def results():
                 # This will continue forever until ctx is done
@@ -125,6 +123,7 @@ class _Queue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     _after_yielded: list[Callable[["_protocols.LimitedQueue[T_Item]"], None]] = dataclasses.field(
         default_factory=list, init=False
     )
+    _item_ensurer: _protocols.QueueItemDef[T_Item]
 
     breaker: asyncio.Event = dataclasses.field(default_factory=asyncio.Event, init=False)
 
@@ -147,9 +146,9 @@ class _Queue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
     def append(self, item: T_Item, *, priority: bool = False) -> None:
         if priority:
-            self._collection.insert(0, item)
+            self._collection.insert(0, self._item_ensurer(item))
         else:
-            self._collection.append(item)
+            self._collection.append(self._item_ensurer(item))
         self._waiter.set()
 
     def __aiter__(self) -> AsyncGenerator[T_Item]:
@@ -202,20 +201,103 @@ class _Queue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         return self._ctx.add_done_callback(cb)
 
 
-def queue[T_Item = object](
-    *, ctx: _protocols.CTX, empty_on_finished: bool = False
-) -> _protocols.Queue[T_Item]:
-    return _Queue[T_Item](_ctx=ctx, _empty_on_finished=empty_on_finished)
+def _ensure_object(o: object) -> object:
+    return o
 
 
-def sync_queue[T_Item = object](
+@overload
+def _queue(
+    *,
+    ctx: _protocols.CTX,
+    empty_on_finished: bool = False,
+    name: str = "",
+    item_ensurer: None = None,
+) -> Iterator[_protocols.Queue[object]]: ...
+
+
+@overload
+def _queue[T_Item](
+    *,
+    ctx: _protocols.CTX,
+    empty_on_finished: bool = False,
+    name: str = "",
+    item_ensurer: _protocols.QueueItemDef[T_Item],
+) -> Iterator[_protocols.Queue[T_Item]]: ...
+
+
+def _queue[T_Item](
+    *,
+    ctx: _protocols.CTX,
+    empty_on_finished: bool = False,
+    name: str = "",
+    item_ensurer: _protocols.QueueItemDef[T_Item] | None = None,
+) -> Iterator[_protocols.Queue[T_Item]] | Iterator[_protocols.Queue[object]]:
+    if name:
+        name = f"[{name}]-->"
+
+    with ctx.child(name=f"{name}queue") as ctx_queue:
+        if item_ensurer is None:
+            yield _Queue(
+                _ctx=ctx_queue, _empty_on_finished=empty_on_finished, _item_ensurer=_ensure_object
+            )
+        else:
+            yield _Queue(
+                _ctx=ctx_queue, _empty_on_finished=empty_on_finished, _item_ensurer=item_ensurer
+            )
+
+
+@overload
+def _sync_queue(
     *,
     ctx: _protocols.CTX,
     timeout: float = 0.05,
     empty_on_finished: bool = False,
-) -> _protocols.SyncQueue[T_Item]:
-    return _SyncQueue[T_Item](_ctx=ctx, _timeout=timeout, _empty_on_finished=empty_on_finished)
+    name: str = "",
+    item_ensurer: None = None,
+) -> Iterator[_protocols.SyncQueue[object]]: ...
 
+
+@overload
+def _sync_queue[T_Item](
+    *,
+    ctx: _protocols.CTX,
+    timeout: float = 0.05,
+    empty_on_finished: bool = False,
+    name: str = "",
+    item_ensurer: _protocols.QueueItemDef[T_Item],
+) -> Iterator[_protocols.SyncQueue[T_Item]]: ...
+
+
+def _sync_queue[T_Item = object](
+    *,
+    ctx: _protocols.CTX,
+    timeout: float = 0.05,
+    empty_on_finished: bool = False,
+    name: str = "",
+    item_ensurer: _protocols.QueueItemDef[T_Item] | None = None,
+) -> Iterator[_protocols.SyncQueue[T_Item]] | Iterator[_protocols.SyncQueue[object]]:
+    if name:
+        name = f"[{name}]-->"
+
+    with ctx.child(name=f"{name}sync_queue") as ctx_sync_queue:
+        if item_ensurer is None:
+            yield _SyncQueue(
+                _ctx=ctx_sync_queue,
+                _timeout=timeout,
+                _empty_on_finished=empty_on_finished,
+                _item_ensurer=_ensure_object,
+            )
+        else:
+            yield _SyncQueue(
+                _ctx=ctx_sync_queue,
+                _timeout=timeout,
+                _empty_on_finished=empty_on_finished,
+                _item_ensurer=item_ensurer,
+            )
+
+
+queue = contextlib.contextmanager(_queue)
+sync_queue = contextlib.contextmanager(_sync_queue)
 
 if TYPE_CHECKING:
     _Q: _protocols.Queue[object] = cast(_Queue[object], None)

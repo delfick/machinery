@@ -22,50 +22,50 @@ def ctx() -> Iterator[hp.CTX]:
 
 class TestQueue:
     def test_takes_in_a_ctx(self, ctx: hp.CTX) -> None:
-        queue = hp.queue(ctx=ctx)
-        assert isinstance(queue, _queue._Queue)
+        with hp.queue(ctx=ctx) as queue:
+            assert isinstance(queue, _queue._Queue)
 
-        assert queue._ctx.has_direct_done_callback(queue._stop_waiter)
+            assert queue._ctx.has_direct_done_callback(queue._stop_waiter)
 
-        assert isinstance(queue._collection, deque)
+            assert isinstance(queue._collection, deque)
 
-        assert not queue._waiter.is_set()
+            assert not queue._waiter.is_set()
 
     async def test_can_stop_the_waiter_on_done(self, ctx: hp.CTX) -> None:
-        queue = hp.queue(ctx=ctx)
-        assert isinstance(queue, _queue._Queue)
+        with hp.queue(ctx=ctx) as queue:
+            assert isinstance(queue, _queue._Queue)
 
-        assert not queue._waiter.is_set()
+            assert not queue._waiter.is_set()
 
-        ctx.cancel()
-        await asyncio.sleep(0.001)
+            ctx.cancel()
+            await asyncio.sleep(0.001)
 
-        assert queue._waiter.is_set()
+            assert queue._waiter.is_set()
 
         # And if the waiter was already done
-        queue = hp.queue(ctx=ctx)
-        assert isinstance(queue, _queue._Queue)
+        with hp.queue(ctx=ctx) as queue:
+            assert isinstance(queue, _queue._Queue)
 
-        queue._waiter.set()
+            queue._waiter.set()
 
-        ctx.cancel()
-        await asyncio.sleep(0.001)
+            ctx.cancel()
+            await asyncio.sleep(0.001)
 
-        assert queue._waiter.is_set()
+            assert queue._waiter.is_set()
 
     async def test_can_get_remaining_items(self, ctx: hp.CTX) -> None:
-        queue = hp.queue(ctx=ctx)
-        assert isinstance(queue, _queue._Queue)
-        assert not queue._waiter.is_set()
+        with hp.queue(ctx=ctx) as queue:
+            assert isinstance(queue, _queue._Queue)
+            assert not queue._waiter.is_set()
 
-        queue.append(1)
-        assert queue._waiter.is_set()
+            queue.append(1)
+            assert queue._waiter.is_set()
 
-        queue.append(2)
+            queue.append(2)
 
-        assert list(queue.remaining()) == [1, 2]
+            assert list(queue.remaining()) == [1, 2]
 
-        assert queue.is_empty()
+            assert queue.is_empty()
 
     class TestGettingAllResults:
         async def test_can_get_results_until_ctx_is_done(
@@ -73,88 +73,85 @@ class TestQueue:
         ) -> None:
             wait = loop.create_future()
 
-            queue = hp.queue(ctx=ctx)
+            with hp.queue(ctx=ctx) as queue:
+                found = []
 
-            found = []
+                async def fill() -> None:
+                    for i in (2, 3, 4):
+                        queue.append(i)
+                    await wait
+                    for i in (5, 6, 7):
+                        queue.append(i)
 
-            async def fill() -> None:
-                for i in (2, 3, 4):
-                    queue.append(i)
-                await wait
-                for i in (5, 6, 7):
-                    queue.append(i)
+                async with hp.task_holder(ctx=ctx) as ts:
+                    ts.add_coroutine(fill())
 
-            async with hp.task_holder(ctx=ctx) as ts:
-                ts.add_coroutine(fill())
+                    queue.append(1)
 
-                queue.append(1)
+                    async for item in queue:
+                        if item == 5:
+                            queue.breaker.set()
 
-                async for item in queue:
-                    if item == 5:
-                        queue.breaker.set()
+                        found.append(item)
 
-                    found.append(item)
+                        if item == 4:
+                            wait.set_result(True)
 
-                    if item == 4:
-                        wait.set_result(True)
-
-            # The queue will drop remaining items
-            assert found == [1, 2, 3, 4, 5]
-            assert list(queue.remaining()) == [6, 7]
+                # The queue will drop remaining items
+                assert found == [1, 2, 3, 4, 5]
+                assert list(queue.remaining()) == [6, 7]
 
         async def test_ignores_results_added_after_ctx_is_done_if_still_waiting_for_results(
             self, ctx: hp.CTX, loop: asyncio.AbstractEventLoop
         ) -> None:
             wait = loop.create_future()
 
-            queue = hp.queue(ctx=ctx)
+            with hp.queue(ctx=ctx) as queue:
+                found = []
 
+                async def fill() -> None:
+                    for i in (2, 3, 4):
+                        queue.append(i)
+                    await wait
+                    queue.breaker.set()
+                    for i in (5, 6, 7):
+                        queue.append(i)
+
+                async with hp.task_holder(ctx=ctx) as ts:
+                    ts.add_coroutine(fill())
+
+                    queue.append(1)
+
+                    async for item in queue:
+                        found.append(item)
+
+                        if item == 4:
+                            wait.set_result(True)
+
+                # The queue will drop remaining items
+                assert found == [1, 2, 3, 4]
+                assert list(queue.remaining()) == [5, 6, 7]
+
+        async def test_is_re_entrant_if_we_break(self, ctx: hp.CTX) -> None:
             found = []
-
-            async def fill() -> None:
-                for i in (2, 3, 4):
+            with hp.queue(ctx=ctx) as queue:
+                for i in range(10):
                     queue.append(i)
-                await wait
-                queue.breaker.set()
-                for i in (5, 6, 7):
-                    queue.append(i)
-
-            async with hp.task_holder(ctx=ctx) as ts:
-                ts.add_coroutine(fill())
-
-                queue.append(1)
 
                 async for item in queue:
                     found.append(item)
 
-                    if item == 4:
-                        wait.set_result(True)
+                    if item == 3:
+                        break
 
-            # The queue will drop remaining items
-            assert found == [1, 2, 3, 4]
-            assert list(queue.remaining()) == [5, 6, 7]
+                assert found == [0, 1, 2, 3]
 
-        async def test_is_re_entrant_if_we_break(self, ctx: hp.CTX) -> None:
-            found = []
-            queue = hp.queue(ctx=ctx)
+                async for item in queue:
+                    found.append(item)
+                    if item == 9:
+                        queue.breaker.set()
 
-            for i in range(10):
-                queue.append(i)
-
-            async for item in queue:
-                found.append(item)
-
-                if item == 3:
-                    break
-
-            assert found == [0, 1, 2, 3]
-
-            async for item in queue:
-                found.append(item)
-                if item == 9:
-                    queue.breaker.set()
-
-            assert found == list(range(10))
+                assert found == list(range(10))
 
     class TestGettingAllResultsAndEmptyOnFinished:
         async def test_can_get_results_until_ctx_is_done(
@@ -162,174 +159,184 @@ class TestQueue:
         ) -> None:
             wait = loop.create_future()
 
-            queue = hp.queue(ctx=ctx, empty_on_finished=True)
+            with hp.queue(ctx=ctx, empty_on_finished=True) as queue:
+                found = []
 
-            found = []
+                async def fill() -> None:
+                    for i in (2, 3, 4):
+                        queue.append(i)
+                    await wait
+                    for i in (5, 6, 7):
+                        queue.append(i)
 
-            async def fill() -> None:
-                for i in (2, 3, 4):
-                    queue.append(i)
-                await wait
-                for i in (5, 6, 7):
-                    queue.append(i)
+                async with hp.task_holder(ctx=ctx) as ts:
+                    ts.add_coroutine(fill())
 
-            async with hp.task_holder(ctx=ctx) as ts:
-                ts.add_coroutine(fill())
+                    queue.append(1)
 
-                queue.append(1)
+                    async for item in queue:
+                        if item == 5:
+                            queue.breaker.set()
 
-                async for item in queue:
-                    if item == 5:
-                        queue.breaker.set()
+                        found.append(item)
 
-                    found.append(item)
+                        if item == 4:
+                            wait.set_result(True)
 
-                    if item == 4:
-                        wait.set_result(True)
-
-            # The queue will not drop remaining items
-            assert found == [1, 2, 3, 4, 5, 6, 7]
-            assert list(queue.remaining()) == []
+                # The queue will not drop remaining items
+                assert found == [1, 2, 3, 4, 5, 6, 7]
+                assert list(queue.remaining()) == []
 
         async def test_gets_results_added_after_ctx_is_done_if_still_waiting_for_results(
             self, ctx: hp.CTX, loop: asyncio.AbstractEventLoop
         ) -> None:
             wait = loop.create_future()
 
-            queue = hp.queue(ctx=ctx, empty_on_finished=True)
+            with hp.queue(ctx=ctx, empty_on_finished=True) as queue:
+                found = []
 
+                async def fill() -> None:
+                    for i in (2, 3, 4):
+                        queue.append(i)
+                    await wait
+                    queue.breaker.set()
+                    for i in (5, 6, 7):
+                        queue.append(i)
+
+                async with hp.task_holder(ctx=ctx) as ts:
+                    ts.add_coroutine(fill())
+
+                    queue.append(1)
+
+                    async for item in queue:
+                        found.append(item)
+
+                        if item == 4:
+                            wait.set_result(True)
+
+                # The queue will not drop remaining items
+                assert found == [1, 2, 3, 4, 5, 6, 7]
+                assert list(queue.remaining()) == []
+
+        async def test_is_re_entrant_if_we_break(self, ctx: hp.CTX) -> None:
             found = []
-
-            async def fill() -> None:
-                for i in (2, 3, 4):
+            with hp.queue(ctx=ctx, empty_on_finished=True) as queue:
+                for i in range(10):
                     queue.append(i)
-                await wait
-                queue.breaker.set()
-                for i in (5, 6, 7):
-                    queue.append(i)
-
-            async with hp.task_holder(ctx=ctx) as ts:
-                ts.add_coroutine(fill())
-
-                queue.append(1)
 
                 async for item in queue:
                     found.append(item)
 
-                    if item == 4:
-                        wait.set_result(True)
+                    if item == 3:
+                        break
 
-            # The queue will not drop remaining items
-            assert found == [1, 2, 3, 4, 5, 6, 7]
-            assert list(queue.remaining()) == []
+                assert found == [0, 1, 2, 3]
 
-        async def test_is_re_entrant_if_we_break(self, ctx: hp.CTX) -> None:
-            found = []
-            queue = hp.queue(ctx=ctx, empty_on_finished=True)
+                async for item in queue:
+                    found.append(item)
+                    if item == 9:
+                        queue.breaker.set()
 
-            for i in range(10):
-                queue.append(i)
-
-            async for item in queue:
-                found.append(item)
-
-                if item == 3:
-                    break
-
-            assert found == [0, 1, 2, 3]
-
-            async for item in queue:
-                found.append(item)
-                if item == 9:
-                    queue.breaker.set()
-
-            assert found == list(range(10))
+                assert found == list(range(10))
 
         async def test_can_append_with_priority(self, ctx: hp.CTX) -> None:
             found: list[object] = []
-            queue = hp.queue(ctx=ctx)
+            with hp.queue(ctx=ctx) as queue:
+                for i in range(10):
+                    queue.append(i)
 
-            for i in range(10):
-                queue.append(i)
+                async for item in queue:
+                    found.append(item)
+                    if item == 3:
+                        queue.append(50, priority=True)
 
-            async for item in queue:
-                found.append(item)
-                if item == 3:
-                    queue.append(50, priority=True)
+                    if item == 7:
+                        queue.breaker.set()
 
-                if item == 7:
-                    queue.breaker.set()
-
-            assert found == [0, 1, 2, 3, 50, 4, 5, 6, 7]
+                assert found == [0, 1, 2, 3, 50, 4, 5, 6, 7]
 
         async def test_can_be_given_functions_to_do_something_after_values_after_yielded(
             self, ctx: hp.CTX
         ) -> None:
             found: list[object] = []
-            queue = hp.queue(ctx=ctx)
+            with hp.queue(ctx=ctx) as queue:
+                for i in range(10):
+                    queue.append(i)
 
-            for i in range(10):
-                queue.append(i)
+                def sneaky_stop(queue: hp.protocols.LimitedQueue) -> None:
+                    if len(queue) == 3:
+                        queue.append(40)
+                        queue.breaker.set()
+                        found.append("sneaky_stop")
 
-            def sneaky_stop(queue: hp.protocols.LimitedQueue) -> None:
-                if len(queue) == 3:
-                    queue.append(40)
-                    queue.breaker.set()
-                    found.append("sneaky_stop")
+                queue.process_after_yielded(sneaky_stop)
 
-            queue.process_after_yielded(sneaky_stop)
+                async for item in queue:
+                    found.append(item)
+                    found.append("-")
 
-            async for item in queue:
-                found.append(item)
-                found.append("-")
-
-            assert list(queue.remaining()) == [7, 8, 9, 40]
-            assert found == [0, "-", 1, "-", 2, "-", 3, "-", 4, "-", 5, "-", 6, "-", "sneaky_stop"]
+                assert list(queue.remaining()) == [7, 8, 9, 40]
+                assert found == [
+                    0,
+                    "-",
+                    1,
+                    "-",
+                    2,
+                    "-",
+                    3,
+                    "-",
+                    4,
+                    "-",
+                    5,
+                    "-",
+                    6,
+                    "-",
+                    "sneaky_stop",
+                ]
 
 
 class TestSyncQueue:
     def test_takes_in_a_ctx(self, ctx: hp.CTX) -> None:
-        queue = hp.sync_queue(ctx=ctx)
-        assert isinstance(queue, _queue._SyncQueue)
+        with hp.sync_queue(ctx=ctx) as queue:
+            assert isinstance(queue, _queue._SyncQueue)
 
-        assert queue._timeout == 0.05
+            assert queue._timeout == 0.05
 
-        assert isinstance(queue._collection, NormalQueue)
+            assert isinstance(queue._collection, NormalQueue)
 
-        queue2 = hp.sync_queue(ctx=ctx, timeout=1)
-        assert isinstance(queue2, _queue._SyncQueue)
-        assert queue2._timeout == 1
+        with hp.sync_queue(ctx=ctx, timeout=1) as queue2:
+            assert isinstance(queue2, _queue._SyncQueue)
+            assert queue2._timeout == 1
 
     def test_can_append_items(self, ctx: hp.CTX) -> None:
-        queue = hp.sync_queue(ctx=ctx)
-        assert isinstance(queue, _queue._SyncQueue)
+        with hp.sync_queue(ctx=ctx) as queue:
+            assert isinstance(queue, _queue._SyncQueue)
 
-        queue.append(1)
-        queue.append(2)
+            queue.append(1)
+            queue.append(2)
 
-        found = []
-        for item in queue:
-            found.append(item)
-            if item == 2:
-                break
+            found = []
+            for item in queue:
+                found.append(item)
+                if item == 2:
+                    break
 
-        assert found == [1, 2]
+            assert found == [1, 2]
 
-        queue.append(3)
-        found = []
-        for item in queue:
-            found.append(item)
-            ctx.cancel()
-        assert found == [3]
+            queue.append(3)
+            found = []
+            for item in queue:
+                found.append(item)
+                ctx.cancel()
+            assert found == [3]
 
     async def test_can_get_remaining_items(self, ctx: hp.CTX) -> None:
-        queue = hp.sync_queue(ctx=ctx)
+        with hp.sync_queue(ctx=ctx) as queue:
+            queue.append(1)
+            queue.append(2)
 
-        queue.append(1)
-        queue.append(2)
-
-        assert list(queue.remaining()) == [1, 2]
-        assert queue.is_empty()
+            assert list(queue.remaining()) == [1, 2]
+            assert queue.is_empty()
 
     class TestGettingAllResults:
         async def test_can_get_results_until_ctx_is_done(
@@ -337,92 +344,89 @@ class TestSyncQueue:
         ) -> None:
             wait = loop.create_future()
 
-            queue = hp.sync_queue(ctx=ctx)
+            with hp.sync_queue(ctx=ctx) as queue:
+                found = []
 
-            found = []
+                async def fill() -> None:
+                    for i in (2, 3, 4):
+                        queue.append(i)
+                    await wait
+                    for i in (5, 6, 7):
+                        queue.append(i)
 
-            async def fill() -> None:
-                for i in (2, 3, 4):
-                    queue.append(i)
-                await wait
-                for i in (5, 6, 7):
-                    queue.append(i)
+                async with hp.task_holder(ctx=ctx) as ts:
+                    ts.add_coroutine(fill())
 
-            async with hp.task_holder(ctx=ctx) as ts:
-                ts.add_coroutine(fill())
+                    queue.append(1)
 
-                queue.append(1)
+                    for item in queue:
+                        if item == 5:
+                            ctx.cancel()
 
-                for item in queue:
-                    if item == 5:
-                        ctx.cancel()
+                        found.append(item)
 
-                    found.append(item)
+                        if item == 4:
+                            wait.set_result(True)
 
-                    if item == 4:
-                        wait.set_result(True)
+                        await asyncio.sleep(0.01)
 
-                    await asyncio.sleep(0.01)
-
-            # The queue will drop remaining items
-            assert found == [1, 2, 3, 4, 5]
-            assert list(queue.remaining()) == [6, 7]
+                # The queue will drop remaining items
+                assert found == [1, 2, 3, 4, 5]
+                assert list(queue.remaining()) == [6, 7]
 
         async def test_ignores_results_added_after_ctx_is_done_if_still_waiting_for_results(
             self, ctx: hp.CTX, loop: asyncio.AbstractEventLoop
         ) -> None:
             wait = loop.create_future()
 
-            queue = hp.sync_queue(ctx=ctx)
+            with hp.sync_queue(ctx=ctx) as queue:
+                found = []
 
+                async def fill() -> None:
+                    for i in (2, 3, 4):
+                        queue.append(i)
+                    await wait
+                    ctx.cancel()
+                    for i in (5, 6, 7):
+                        queue.append(i)
+
+                async with hp.task_holder(ctx=ctx) as ts:
+                    ts.add_coroutine(fill())
+
+                    queue.append(1)
+
+                    for item in queue:
+                        found.append(item)
+
+                        if item == 4:
+                            wait.set_result(True)
+
+                        await asyncio.sleep(0.01)
+
+                # The queue will drop remaining items
+                assert found == [1, 2, 3, 4]
+                assert list(queue.remaining()) == [5, 6, 7]
+
+        async def test_is_re_entrant_if_we_break(self, ctx: hp.CTX) -> None:
             found = []
-
-            async def fill() -> None:
-                for i in (2, 3, 4):
+            with hp.sync_queue(ctx=ctx) as queue:
+                for i in range(10):
                     queue.append(i)
-                await wait
-                ctx.cancel()
-                for i in (5, 6, 7):
-                    queue.append(i)
-
-            async with hp.task_holder(ctx=ctx) as ts:
-                ts.add_coroutine(fill())
-
-                queue.append(1)
 
                 for item in queue:
                     found.append(item)
 
-                    if item == 4:
-                        wait.set_result(True)
+                    if item == 3:
+                        break
 
-                    await asyncio.sleep(0.01)
+                assert found == [0, 1, 2, 3]
 
-            # The queue will drop remaining items
-            assert found == [1, 2, 3, 4]
-            assert list(queue.remaining()) == [5, 6, 7]
+                for item in queue:
+                    found.append(item)
+                    if item == 9:
+                        ctx.cancel()
 
-        async def test_is_re_entrant_if_we_break(self, ctx: hp.CTX) -> None:
-            found = []
-            queue = hp.sync_queue(ctx=ctx)
-
-            for i in range(10):
-                queue.append(i)
-
-            for item in queue:
-                found.append(item)
-
-                if item == 3:
-                    break
-
-            assert found == [0, 1, 2, 3]
-
-            for item in queue:
-                found.append(item)
-                if item == 9:
-                    ctx.cancel()
-
-            assert found == list(range(10))
+                assert found == list(range(10))
 
     class TestGettingAllResultsWhenEmptyOnFinished:
         async def test_can_get_results_until_ctx_is_done(
@@ -430,89 +434,86 @@ class TestSyncQueue:
         ) -> None:
             wait = loop.create_future()
 
-            queue = hp.sync_queue(ctx=ctx, empty_on_finished=True)
+            with hp.sync_queue(ctx=ctx, empty_on_finished=True) as queue:
+                found = []
 
-            found = []
+                async def fill() -> None:
+                    for i in (2, 3, 4):
+                        queue.append(i)
+                    await wait
+                    for i in (5, 6, 7):
+                        queue.append(i)
 
-            async def fill() -> None:
-                for i in (2, 3, 4):
-                    queue.append(i)
-                await wait
-                for i in (5, 6, 7):
-                    queue.append(i)
+                async with hp.task_holder(ctx=ctx) as ts:
+                    ts.add_coroutine(fill())
 
-            async with hp.task_holder(ctx=ctx) as ts:
-                ts.add_coroutine(fill())
+                    queue.append(1)
 
-                queue.append(1)
+                    for item in queue:
+                        if item == 5:
+                            ctx.cancel()
 
-                for item in queue:
-                    if item == 5:
-                        ctx.cancel()
+                        found.append(item)
 
-                    found.append(item)
+                        if item == 4:
+                            wait.set_result(True)
 
-                    if item == 4:
-                        wait.set_result(True)
+                        await asyncio.sleep(0.01)
 
-                    await asyncio.sleep(0.01)
-
-            # The queue will not drop remaining items
-            assert found == [1, 2, 3, 4, 5, 6, 7]
-            assert list(queue.remaining()) == []
+                # The queue will not drop remaining items
+                assert found == [1, 2, 3, 4, 5, 6, 7]
+                assert list(queue.remaining()) == []
 
         async def test_gets_results_added_after_ctx_is_done_if_still_waiting_for_results(
             self, ctx: hp.CTX, loop: asyncio.AbstractEventLoop
         ) -> None:
             wait = loop.create_future()
 
-            queue = hp.sync_queue(ctx=ctx, empty_on_finished=True)
+            with hp.sync_queue(ctx=ctx, empty_on_finished=True) as queue:
+                found = []
 
+                async def fill() -> None:
+                    for i in (2, 3, 4):
+                        queue.append(i)
+                    await wait
+                    ctx.cancel()
+                    for i in (5, 6, 7):
+                        queue.append(i)
+
+                async with hp.task_holder(ctx=ctx) as ts:
+                    ts.add_coroutine(fill())
+
+                    queue.append(1)
+
+                    for item in queue:
+                        found.append(item)
+
+                        if item == 4:
+                            wait.set_result(True)
+
+                        await asyncio.sleep(0.01)
+
+                # The queue will not remaining items
+                assert found == [1, 2, 3, 4, 5, 6, 7]
+                assert list(queue.remaining()) == []
+
+        async def test_is_re_entrant_if_we_break(self, ctx: hp.CTX) -> None:
             found = []
-
-            async def fill() -> None:
-                for i in (2, 3, 4):
+            with hp.sync_queue(ctx=ctx, empty_on_finished=True) as queue:
+                for i in range(10):
                     queue.append(i)
-                await wait
-                ctx.cancel()
-                for i in (5, 6, 7):
-                    queue.append(i)
-
-            async with hp.task_holder(ctx=ctx) as ts:
-                ts.add_coroutine(fill())
-
-                queue.append(1)
 
                 for item in queue:
                     found.append(item)
 
-                    if item == 4:
-                        wait.set_result(True)
+                    if item == 3:
+                        break
 
-                    await asyncio.sleep(0.01)
+                assert found == [0, 1, 2, 3]
 
-            # The queue will not remaining items
-            assert found == [1, 2, 3, 4, 5, 6, 7]
-            assert list(queue.remaining()) == []
+                for item in queue:
+                    found.append(item)
+                    if item == 9:
+                        ctx.cancel()
 
-        async def test_is_re_entrant_if_we_break(self, ctx: hp.CTX) -> None:
-            found = []
-            queue = hp.sync_queue(ctx=ctx, empty_on_finished=True)
-
-            for i in range(10):
-                queue.append(i)
-
-            for item in queue:
-                found.append(item)
-
-                if item == 3:
-                    break
-
-            assert found == [0, 1, 2, 3]
-
-            for item in queue:
-                found.append(item)
-                if item == 9:
-                    ctx.cancel()
-
-            assert found == list(range(10))
+                assert found == list(range(10))

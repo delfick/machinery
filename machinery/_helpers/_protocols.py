@@ -161,6 +161,10 @@ class LimitedQueue[T_Item = object](Protocol):
     ) -> FutureCallback[None]: ...
 
 
+class QueueItemDef[T_Item](Protocol):
+    def __call__(self, o: object) -> T_Item: ...
+
+
 class Queue[T_Item = object](Protocol):
     @property
     def breaker(self) -> asyncio.Event: ...

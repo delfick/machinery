@@ -365,19 +365,23 @@ async def queue_manager[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.T
     if name:
         name = f"[{name}]-->"
 
+    def _ensure_queue_manager_result(o: object) -> QueueManagerResult[T_QueueContext]:
+        return o  # type: ignore[return-value]
+
     with ctx.child(name=f"{name}queue_manager") as ctx_queue_manager:
         async with _task_holder.task_holder(ctx=ctx_queue_manager) as task_holder:
-            with (
-                ctx_queue_manager.child(name=f"{name}queue_manager[streamer]") as ctx_streamer,
-                ctx_queue_manager.child(name=f"{name}queue_manager[feeder]") as ctx_feeder,
-            ):
-                streamer: _protocols.Queue[QueueManagerResult[T_QueueContext]] = _queue.queue(
-                    ctx=ctx_streamer, empty_on_finished=True
-                )
-                feeder = _QueueFeeder(
-                    ctx=ctx_feeder,
-                    task_holder=task_holder,
-                    queue=streamer,
-                    make_empty_context=make_empty_context,
-                )
-                yield streamer, feeder
+            with _queue.queue(
+                ctx=ctx_queue_manager,
+                empty_on_finished=True,
+                item_ensurer=_ensure_queue_manager_result,
+            ) as streamer:
+                with (
+                    ctx_queue_manager.child(name=f"{name}queue_manager[feeder]") as ctx_feeder,
+                ):
+                    feeder = _QueueFeeder(
+                        ctx=ctx_feeder,
+                        task_holder=task_holder,
+                        queue=streamer,
+                        make_empty_context=make_empty_context,
+                    )
+                    yield streamer, feeder
