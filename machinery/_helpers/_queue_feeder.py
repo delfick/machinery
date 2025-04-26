@@ -70,23 +70,23 @@ class _QueueSource:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
-    ctx: _protocols.CTX[T_Tramp]
-    queue: _protocols.Queue[QueueManagerResult[T_QueueContext]]
-    task_holder: _protocols.TaskHolder
-    make_empty_context: Callable[[], T_QueueContext]
+    _ctx: _protocols.CTX[T_Tramp]
+    _queue: _protocols.Queue[QueueManagerResult[T_QueueContext]]
+    _task_holder: _protocols.TaskHolder
+    _make_empty_context: Callable[[], T_QueueContext]
 
-    sent_stop: asyncio.Event = dataclasses.field(default_factory=asyncio.Event, init=False)
-    sources: list[_QueueSource] = dataclasses.field(default_factory=list, init=False)
-    finished_if_empty_sources: asyncio.Event = dataclasses.field(
+    _sent_stop: asyncio.Event = dataclasses.field(default_factory=asyncio.Event, init=False)
+    _sources: list[_QueueSource] = dataclasses.field(default_factory=list, init=False)
+    _finished_if_empty_sources: asyncio.Event = dataclasses.field(
         default_factory=asyncio.Event, init=False
     )
 
     def __post_init__(self) -> None:
-        self.queue.add_done_callback(self._on_queue_stopped)
-        self.queue.process_after_yielded(self._process_queue_after_yielded)
+        self._queue.add_done_callback(self._on_queue_stopped)
+        self._queue.process_after_yielded(self._process_queue_after_yielded)
 
     def set_as_finished_if_out_of_sources(self) -> None:
-        self.finished_if_empty_sources.set()
+        self._finished_if_empty_sources.set()
         self._clear_sources()
 
     def _extend_result(
@@ -104,11 +104,11 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
             case _ if callable(result) and len(inspect.signature(result).parameters) == 0:
                 self.add_sync_function(result, context=context, _parent_source=source)
             case _:
-                self.queue.append(
+                self._queue.append(
                     QueueManagerSuccess(
                         sources=source.sources,
                         value=result,
-                        context=context if context is not None else self.make_empty_context(),
+                        context=context if context is not None else self._make_empty_context(),
                     )
                 )
 
@@ -120,16 +120,16 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
         _parent_source: _QueueSource | None = None,
     ) -> None:
         source = _QueueSource(input_type=QueueInput.SYNC_FUNCTION, source=func)
-        self.sources.append(source)
+        self._sources.append(source)
 
         try:
             result = func()
         except Exception as exc:
-            self.queue.append(
+            self._queue.append(
                 QueueManagerFailure(
                     sources=source.sources,
                     exception=exc,
-                    context=context if context is not None else self.make_empty_context(),
+                    context=context if context is not None else self._make_empty_context(),
                 )
             )
         else:
@@ -154,7 +154,7 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
                 input_type=QueueInput.SYNC_ITERATOR, source=iterator, parent_source=_parent_source
             )
 
-        self.sources.append(source)
+        self._sources.append(source)
 
         async def process_iterator() -> None:
             while True:
@@ -164,19 +164,19 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
                     break
                 except Exception as exc:
                     event = asyncio.Event()
-                    self.ctx.loop.call_soon(event.set)
+                    self._ctx.loop.call_soon(event.set)
                     await event.wait()
-                    self.queue.append(
+                    self._queue.append(
                         QueueManagerFailure(
                             sources=source.sources,
                             exception=exc,
-                            context=context if context is not None else self.make_empty_context(),
+                            context=context if context is not None else self._make_empty_context(),
                         )
                     )
                     break
                 else:
                     event = asyncio.Event()
-                    self.ctx.loop.call_soon(event.set)
+                    self._ctx.loop.call_soon(event.set)
                     await event.wait()
                     self._extend_result(result=nxt, source=source, context=context)
 
@@ -189,17 +189,17 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
             else:
                 exc = res.exception()
 
-            self.queue.append(
+            self._queue.append(
                 QueueManagerIterationStop(
                     sources=source.sources,
                     exception=exc,
-                    context=context if context is not None else self.make_empty_context(),
+                    context=context if context is not None else self._make_empty_context(),
                 )
             )
             source.finished.set()
             self._clear_sources()
 
-        task = self.task_holder.add_coroutine(process_iterator())
+        task = self._task_holder.add_coroutine(process_iterator())
         task.add_done_callback(on_done)
         self._clear_sources()
 
@@ -213,7 +213,7 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
         source = _QueueSource(
             input_type=QueueInput.VALUE, source=value, parent_source=_parent_source
         )
-        self.sources.append(source)
+        self._sources.append(source)
 
         self._extend_result(result=value, source=source, context=context)
         source.finished.set()
@@ -229,8 +229,8 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
         source = _QueueSource(
             input_type=QueueInput.COROUTINE, source=coro, parent_source=_parent_source
         )
-        self.sources.append(source)
-        self.add_task(self.task_holder.add_coroutine(coro), context=context, _parent_source=source)
+        self._sources.append(source)
+        self.add_task(self._ctx.loop.create_task(coro), context=context, _parent_source=source)
 
         source.finished.set()
         self._clear_sources()
@@ -245,7 +245,8 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
         source = _QueueSource(
             input_type=QueueInput.TASK, source=task, parent_source=_parent_source
         )
-        self.sources.append(source)
+        self._sources.append(source)
+        self._task_holder.add_task(task)
 
         def on_done(res: _protocols.FutureStatus[object]) -> None:
             source.finished.set()
@@ -257,11 +258,11 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
                 exc = res.exception()
 
             if exc is not None:
-                self.queue.append(
+                self._queue.append(
                     QueueManagerFailure(
                         sources=source.sources,
                         exception=exc,
-                        context=context if context is not None else self.make_empty_context(),
+                        context=context if context is not None else self._make_empty_context(),
                     )
                 )
             else:
@@ -285,7 +286,7 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
         source = _QueueSource(
             input_type=QueueInput.ASYNC_GENERATOR, source=agen, parent_source=_parent_source
         )
-        self.sources.append(source)
+        self._sources.append(source)
 
         async def process_generator() -> None:
             while True:
@@ -294,11 +295,11 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
                 except StopAsyncIteration:
                     break
                 except Exception as exc:
-                    self.queue.append(
+                    self._queue.append(
                         QueueManagerFailure(
                             sources=source.sources,
                             exception=exc,
-                            context=context if context is not None else self.make_empty_context(),
+                            context=context if context is not None else self._make_empty_context(),
                         )
                     )
                     break
@@ -312,17 +313,17 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
             else:
                 exc = res.exception()
 
-            self.queue.append(
+            self._queue.append(
                 QueueManagerIterationStop(
                     sources=source.sources,
                     exception=exc,
-                    context=context if context is not None else self.make_empty_context(),
+                    context=context if context is not None else self._make_empty_context(),
                 )
             )
             source.finished.set()
             self._clear_sources()
 
-        task = self.task_holder.add_coroutine(process_generator())
+        task = self._task_holder.add_coroutine(process_generator())
         task.add_done_callback(on_done)
         self._clear_sources()
 
@@ -336,20 +337,20 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
         self._send_stop(exc, priority=True)
 
     def _clear_sources(self) -> None:
-        self.sources[:] = [source for source in self.sources if not source.finished.is_set()]
+        self._sources[:] = [source for source in self._sources if not source.finished.is_set()]
 
     def _send_stop(self, exc: BaseException | None = None, /, *, priority: bool = False) -> None:
-        if self.sent_stop.is_set():
+        if self._sent_stop.is_set():
             return
 
-        self.sent_stop.set()
-        self.queue.append(QueueManagerStopped(exception=exc), priority=priority)
-        self.queue.breaker.set()
+        self._sent_stop.set()
+        self._queue.append(QueueManagerStopped(exception=exc), priority=priority)
+        self._queue.breaker.set()
 
     def _process_queue_after_yielded(
         self, queue: _protocols.LimitedQueue[QueueManagerResult[T_QueueContext]]
     ) -> None:
-        if not self.sources and self.finished_if_empty_sources.is_set() and queue.is_empty():
+        if not self._sources and self._finished_if_empty_sources.is_set() and queue.is_empty():
             self._send_stop()
 
 
@@ -376,9 +377,9 @@ async def queue_manager[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.T
                     ctx_queue_manager.child(name=f"{name}queue_manager[feeder]") as ctx_feeder,
                 ):
                     feeder = _QueueFeeder(
-                        ctx=ctx_feeder,
-                        task_holder=task_holder,
-                        queue=streamer,
-                        make_empty_context=make_empty_context,
+                        _ctx=ctx_feeder,
+                        _task_holder=task_holder,
+                        _queue=streamer,
+                        _make_empty_context=make_empty_context,
                     )
                     yield streamer, feeder
