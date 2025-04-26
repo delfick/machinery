@@ -183,8 +183,8 @@ async def mocked_call_later(
             mock.patch("time.time", instance.time),
             mock.patch.object(ctx.loop, "call_later", instance.call_later),
         ):
-            with ctx_mocked.child(name=f"{name}mocked_call_later[task_holder]") as ctx_task_holder:
-                async with hp.TaskHolder(ctx=ctx_task_holder) as task_holder:
-                    task_holder.add(instance.run())
+            with ctx_mocked.child(name="task_holder") as ctx_task_holder:
+                async with hp.task_holder(ctx=ctx_task_holder) as task_holder:
+                    task_holder.add_coroutine(instance.run())
                     yield instance
                     ctx_task_holder.cancel()

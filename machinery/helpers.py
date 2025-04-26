@@ -12,11 +12,10 @@ transfer_result = _helpers.futures.transfer_result
 noncancelled_results_from_futs = _helpers.futures.noncancelled_results_from_futs
 find_and_apply_result = _helpers.futures.find_and_apply_result
 
-TaskHolder = _helpers.task_holder.TaskHolder
-
 tick = _helpers.ticker.tick
 queue = _helpers.queue.queue
 sync_queue = _helpers.queue.sync_queue
+task_holder = _helpers.task_holder.task_holder
 
 queue_manager = _helpers.queue_feeder.queue_manager
 QueueManagerStopped = _helpers.queue_feeder.QueueManagerStopped

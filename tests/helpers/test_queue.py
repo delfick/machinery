@@ -84,9 +84,9 @@ class TestQueue:
                 for i in (5, 6, 7):
                     queue.append(i)
 
-            with ctx.child(name="ff") as ff:
-                async with hp.TaskHolder(ctx=ff) as ts:
-                    ts.add(fill())
+            if True:
+                async with hp.task_holder(ctx=ctx) as ts:
+                    ts.add_coroutine(fill())
 
                     queue.append(1)
 
@@ -120,9 +120,9 @@ class TestQueue:
                 for i in (5, 6, 7):
                     queue.append(i)
 
-            with ctx.child(name="ff") as ff:
-                async with hp.TaskHolder(ctx=ff) as ts:
-                    ts.add(fill())
+            if True:
+                async with hp.task_holder(ctx=ctx) as ts:
+                    ts.add_coroutine(fill())
 
                     queue.append(1)
 
@@ -175,9 +175,9 @@ class TestQueue:
                 for i in (5, 6, 7):
                     queue.append(i)
 
-            with ctx.child(name="ff") as ff:
-                async with hp.TaskHolder(ctx=ff) as ts:
-                    ts.add(fill())
+            if True:
+                async with hp.task_holder(ctx=ctx) as ts:
+                    ts.add_coroutine(fill())
 
                     queue.append(1)
 
@@ -211,9 +211,9 @@ class TestQueue:
                 for i in (5, 6, 7):
                     queue.append(i)
 
-            with ctx.child(name="ff") as ff:
-                async with hp.TaskHolder(ctx=ff) as ts:
-                    ts.add(fill())
+            if True:
+                async with hp.task_holder(ctx=ctx) as ts:
+                    ts.add_coroutine(fill())
 
                     queue.append(1)
 
@@ -352,9 +352,9 @@ class TestSyncQueue:
                 for i in (5, 6, 7):
                     queue.append(i)
 
-            with ctx.child(name="ff") as ff:
-                async with hp.TaskHolder(ctx=ff) as ts:
-                    ts.add(fill())
+            if True:
+                async with hp.task_holder(ctx=ctx) as ts:
+                    ts.add_coroutine(fill())
 
                     queue.append(1)
 
@@ -390,9 +390,9 @@ class TestSyncQueue:
                 for i in (5, 6, 7):
                     queue.append(i)
 
-            with ctx.child(name="ff") as ff:
-                async with hp.TaskHolder(ctx=ff) as ts:
-                    ts.add(fill())
+            if True:
+                async with hp.task_holder(ctx=ctx) as ts:
+                    ts.add_coroutine(fill())
 
                     queue.append(1)
 
@@ -447,9 +447,9 @@ class TestSyncQueue:
                 for i in (5, 6, 7):
                     queue.append(i)
 
-            with ctx.child(name="ff") as ff:
-                async with hp.TaskHolder(ctx=ff) as ts:
-                    ts.add(fill())
+            if True:
+                async with hp.task_holder(ctx=ctx) as ts:
+                    ts.add_coroutine(fill())
 
                     queue.append(1)
 
@@ -485,9 +485,9 @@ class TestSyncQueue:
                 for i in (5, 6, 7):
                     queue.append(i)
 
-            with ctx.child(name="ff") as ff:
-                async with hp.TaskHolder(ctx=ff) as ts:
-                    ts.add(fill())
+            if True:
+                async with hp.task_holder(ctx=ctx) as ts:
+                    ts.add_coroutine(fill())
 
                     queue.append(1)
 

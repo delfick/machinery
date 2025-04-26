@@ -1,14 +1,15 @@
 import asyncio
+import contextlib
 import dataclasses
 import types
-from collections.abc import Coroutine, Iterator
+from collections.abc import AsyncGenerator, Coroutine, Iterator
 from typing import Self
 
-from . import _async_mixin, _context, _protocols
+from . import _async_mixin, _protocols
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
+class _TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     """
     An object for managing asynchronous coroutines.
 
@@ -19,37 +20,35 @@ class TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         from machinery import helpers as hp
 
 
-        ctx: hp.CTX = ...
+        async def my_async_program(ctx: hp.CTX) -> None:
+            async def something():
+                await asyncio.sleep(5)
 
-        async def something():
-            await asyncio.sleep(5)
-
-        with ctx.child(name="TaskHolder") as ctx_task_holder:
-            with hp.TaskHolder(ctx=ctx_task_holder) as ts:
-                ts.add(something())
-                ts.add(something())
+            async with hp.task_holder(ctx=ctx) as ts:
+                ts.add_coroutine(something())
+                ts.add_coroutine(something())
 
     If you don't want to use the context manager, you can say:
 
     .. code-block:: python
 
         from machinery import helpers as hp
+        import contextlib
 
-
-        ctx: hp.CTX = ...
 
         async def something():
             await asyncio.sleep(5)
 
-        ctx_task_holder = ctx.child(name="TaskHolder")
-        ts = hp.TaskHolder(ctx=ctx_task_holder)
+        async def my_async_program(ctx: hp.CTX) -> None:
+            exit_stack = contextlib.AsyncExitStack()
 
-        try:
-            ts.add(something())
-            ts.add(something())
-        finally:
-            await ts.finish()
-            ctx.cancel()
+            ts = await exit_stack.enter_async_context(hp.task_holder(ctx=ctx))
+
+            try:
+                ts.add_coroutine(something())
+                ts.add_coroutine(something())
+            finally:
+                await exit_stack.aclose()
 
     Once your block in the context manager is done the context manager won't
     exit until all coroutines have finished. During this time you may still
@@ -80,31 +79,31 @@ class TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         exc: BaseException | None = None,
         tb: types.TracebackType | None = None,
     ) -> None:
-        return await self.finish(exc_type, exc, tb)
+        return await self._finish(exc_type, exc, tb)
 
     async def __aenter__(self) -> Self:
         async with _async_mixin.ensure_aexit(self):
-            return await self.start()
+            return await self._start()
 
-    ctx: _context.CTX[T_Tramp]
-    ts: list[_protocols.WaitByCallback[object]] = dataclasses.field(
+    _ctx: _protocols.CTX[T_Tramp]
+    _ts: list[_protocols.WaitByCallback[object]] = dataclasses.field(
         default_factory=list, init=False
     )
 
     _cleaner: list[asyncio.Task[None]] = dataclasses.field(default_factory=list, init=False)
     _cleaner_waiter: asyncio.Event = dataclasses.field(default_factory=asyncio.Event, init=False)
 
-    def add[T_Ret](
+    def add_coroutine[T_Ret](
         self, coro: Coroutine[object, object, T_Ret], *, silent: bool = False
     ) -> asyncio.Task[T_Ret]:
-        return self.add_task(self.ctx.async_as_background(coro, silent=silent))
+        return self.add_task(self._ctx.async_as_background(coro, silent=silent))
 
     def _set_cleaner_waiter(self, res: _protocols.FutureStatus[object]) -> None:
         self._cleaner_waiter.set()
 
     def add_task[T_Ret](self, task: asyncio.Task[T_Ret]) -> asyncio.Task[T_Ret]:
         if not self._cleaner:
-            t = self.ctx.async_as_background(self.cleaner())
+            t = self._ctx.async_as_background(self._cleaner_task())
             self._cleaner.append(t)
 
             def remove_cleaner(res: _protocols.FutureStatus[None]) -> None:
@@ -114,65 +113,81 @@ class TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
             t.add_done_callback(remove_cleaner)
 
         task.add_done_callback(self._set_cleaner_waiter)
-        self.ts.append(task)
+        self._ts.append(task)
         return task
 
-    async def start(self) -> Self:
+    async def _start(self) -> Self:
         return self
 
-    async def finish(
+    async def _finish(
         self,
         exc_typ: type[BaseException] | None = None,
         exc: BaseException | None = None,
         tb: types.TracebackType | None = None,
     ) -> None:
-        if exc and not self.ctx.done():
-            self.ctx.set_exception(exc)
+        if exc and not self._ctx.done():
+            self._ctx.set_exception(exc)
 
         try:
-            while any(not t.done() for t in self.ts):
-                for t in self.ts:
-                    if self.ctx.done():
+            while any(not t.done() for t in self._ts):
+                for t in self._ts:
+                    if self._ctx.done():
                         t.cancel()
 
-                if self.ts:
-                    if self.ctx.done():
-                        await self.ctx.wait_for_all_futures(self.ctx, *self.ts)
+                if self._ts:
+                    if self._ctx.done():
+                        await self._ctx.wait_for_all_futures(self._ctx, *self._ts)
                     else:
-                        await self.ctx.wait_for_first_future(self.ctx, *self.ts)
+                        await self._ctx.wait_for_first_future(self._ctx, *self._ts)
 
-                    self.ts[:] = [t for t in self.ts if not t.done()]
+                    self._ts[:] = [t for t in self._ts if not t.done()]
         finally:
             if self._cleaner:
                 self._cleaner[0].cancel()
-                await self.ctx.wait_for_all_futures(*self._cleaner)
+                await self._ctx.wait_for_all_futures(*self._cleaner)
 
-            await self.ctx.wait_for_all_futures(self.ctx.async_as_background(self.clean()))
+            await self._ctx.wait_for_all_futures(
+                self._ctx.async_as_background(self._perform_clean())
+            )
 
     @property
     def pending(self) -> int:
-        return sum(1 for t in self.ts if not t.done())
+        return sum(1 for t in self._ts if not t.done())
 
     def __contains__(self, task: asyncio.Task[object]) -> bool:
-        return task in self.ts
+        return task in self._ts
 
     def __iter__(self) -> Iterator[_protocols.WaitByCallback[object]]:
-        return iter(self.ts)
+        return iter(self._ts)
 
-    async def cleaner(self) -> None:
+    async def _cleaner_task(self) -> None:
         while True:
             await self._cleaner_waiter.wait()
             self._cleaner_waiter.clear()
-            await self.clean()
+            await self._perform_clean()
 
-    async def clean(self) -> None:
+    async def _perform_clean(self) -> None:
         destroyed = []
         remaining = []
-        for t in self.ts:
+        for t in self._ts:
             if t.done():
                 destroyed.append(t)
             else:
                 remaining.append(t)
 
-        await self.ctx.wait_for_all_futures(*destroyed)
-        self.ts[:] = remaining + [t for t in self.ts if t not in destroyed and t not in remaining]
+        await self._ctx.wait_for_all_futures(*destroyed)
+        self._ts[:] = remaining + [
+            t for t in self._ts if t not in destroyed and t not in remaining
+        ]
+
+
+@contextlib.asynccontextmanager
+async def task_holder(
+    *, ctx: _protocols.CTX, name: str = ""
+) -> AsyncGenerator[_protocols.TaskHolder]:
+    if name:
+        name = f"[{name}]-->"
+
+    with ctx.child(name=f"{name}task_holder") as ctx_task_holder:
+        async with _TaskHolder(_ctx=ctx_task_holder) as task_holder:
+            yield task_holder

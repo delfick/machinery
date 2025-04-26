@@ -119,7 +119,7 @@ class _FutureDominoes[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
         cls,
         *,
         ctx: hp.CTX[T_Tramp],
-        task_holder: hp.TaskHolder[T_Tramp],
+        task_holder: hp.protocols.TaskHolder,
         expected: int,
     ) -> Self:
         futs: dict[int, Domino] = {}
@@ -178,7 +178,7 @@ class _FutureDominoes[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
             ctx.tramp.log_info("FUTURE_DOMINOES: all knocked over")
             finished.set()
 
-        task_holder.add(knock())
+        task_holder.add_coroutine(knock())
         return instance
 
     def begin(self) -> None:
@@ -302,9 +302,9 @@ async def future_dominoes(
     if name:
         name = f"[{name}]-->"
 
-    with ctx.child(name="{name}future_dominoes[task_holder]") as ctx_task_holder:
-        async with hp.TaskHolder(ctx=ctx_task_holder) as task_holder:
-            with ctx_task_holder.child(name="{name}future_dominoes[dominoes]") as ctx_dominoes:
+    with ctx.child(name="{name}future_dominoes") as ctx_future_dominoes:
+        async with hp.task_holder(ctx=ctx_future_dominoes) as task_holder:
+            with ctx_future_dominoes.child(name="dominoes") as ctx_dominoes:
                 with _FutureDominoes.create(
                     ctx=ctx_dominoes, task_holder=task_holder, expected=expected
                 ) as dominoes:

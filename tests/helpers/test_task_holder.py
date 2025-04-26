@@ -6,6 +6,7 @@ import pytest
 
 from machinery import helpers as hp
 from machinery import test_helpers as thp
+from machinery._helpers import _task_holder
 
 
 @pytest.fixture
@@ -19,10 +20,9 @@ def ctx() -> Iterator[hp.CTX]:
 
 
 class TestTaskHolder:
-    def test_takes_in_a_ctx(self, ctx: hp.CTX) -> None:
-        holder = hp.TaskHolder(ctx=ctx)
-        assert holder.ts == []
-        assert all(f in holder.ctx.futs for f in ctx.futs)
+    async def test_takes_in_a_ctx(self, ctx: hp.CTX) -> None:
+        async with hp.task_holder(ctx=ctx) as ts:
+            assert list(ts) == []
 
     async def test_can_take_in_tasks(self, ctx: hp.CTX) -> None:
         called = []
@@ -33,9 +33,9 @@ class TestTaskHolder:
             finally:
                 called.append(amount)
 
-        async with hp.TaskHolder(ctx=ctx) as ts:
-            ts.add(wait(0.05))
-            ts.add(wait(0.01))
+        async with hp.task_holder(ctx=ctx) as ts:
+            ts.add_coroutine(wait(0.05))
+            ts.add_coroutine(wait(0.01))
 
         assert called == [0.01, 0.05]
 
@@ -50,9 +50,9 @@ class TestTaskHolder:
             finally:
                 called.append(amount)
 
-        async with hp.TaskHolder(ctx=ctx) as ts:
-            await ts.add(wait(0.05))
-            await ts.add(wait(0.01))
+        async with hp.task_holder(ctx=ctx) as ts:
+            await ts.add_coroutine(wait(0.05))
+            await ts.add_coroutine(wait(0.01))
             assert called == [0.05, 0.01]
 
         assert called == [0.05, 0.01]
@@ -62,26 +62,26 @@ class TestTaskHolder:
     ) -> None:
         called = []
 
-        async def wait(ts: hp.TaskHolder, amount: float) -> None:
+        async def wait(ts: hp.protocols.TaskHolder, amount: float) -> None:
             if amount == 0.01:
-                ts.add(wait(ts, 0.06))
+                ts.add_coroutine(wait(ts, 0.06))
             try:
                 await asyncio.sleep(amount)
             finally:
                 called.append(amount)
 
-        async with hp.TaskHolder(ctx=ctx) as ts:
-            ts.add(wait(ts, 0.05))
-            ts.add(wait(ts, 0.01))
+        async with hp.task_holder(ctx=ctx) as ts:
+            ts.add_coroutine(wait(ts, 0.05))
+            ts.add_coroutine(wait(ts, 0.01))
 
         assert called == [0.01, 0.05, 0.06]
 
     async def test_does_not_fail_if_a_task_raises_an_exception(self, ctx: hp.CTX) -> None:
         called = []
 
-        async def wait(ts: hp.TaskHolder, amount: float) -> None:
+        async def wait(ts: hp.protocols.TaskHolder, amount: float) -> None:
             if amount == 0.01:
-                ts.add(wait(ts, 0.06))
+                ts.add_coroutine(wait(ts, 0.06))
             try:
                 if amount == 0.06:
                     raise TypeError("WAT")
@@ -89,16 +89,16 @@ class TestTaskHolder:
             finally:
                 called.append(amount)
 
-        async with hp.TaskHolder(ctx=ctx) as ts:
-            ts.add(wait(ts, 0.05))
-            ts.add(wait(ts, 0.01))
+        async with hp.task_holder(ctx=ctx) as ts:
+            ts.add_coroutine(wait(ts, 0.05))
+            ts.add_coroutine(wait(ts, 0.01))
 
         assert called == [0.06, 0.01, 0.05]
 
     async def test_stops_waiting_tasks_if_ctx_is_stopped(self, ctx: hp.CTX) -> None:
         called = []
 
-        async def wait(ts: hp.TaskHolder, amount: float) -> None:
+        async def wait(ts: hp.protocols.TaskHolder, amount: float) -> None:
             try:
                 await asyncio.sleep(amount)
                 if amount == 0.05:
@@ -108,9 +108,9 @@ class TestTaskHolder:
             finally:
                 called.append(("FINISHED", amount))
 
-        async with hp.TaskHolder(ctx=ctx) as ts:
-            ts.add(wait(ts, 5))
-            ts.add(wait(ts, 0.05))
+        async with hp.task_holder(ctx=ctx) as ts:
+            ts.add_coroutine(wait(ts, 5))
+            ts.add_coroutine(wait(ts, 0.05))
 
         assert called == [("FINISHED", 0.05), ("CANCELLED", 5), ("FINISHED", 5)]
 
@@ -120,9 +120,9 @@ class TestTaskHolder:
         async def doit() -> None:
             await asyncio.sleep(1)
 
-        async with hp.TaskHolder(ctx=ctx) as ts:
+        async with hp.task_holder(ctx=ctx) as ts:
             assert ts.pending == 0
-            t = ts.add(doit())
+            t = ts.add_coroutine(doit())
             assert ts.pending == 1
 
             def process(res: hp.protocols.FutureStatus[None]) -> None:
@@ -151,9 +151,9 @@ class TestTaskHolder:
                 called.append(f"{name}_end")
 
         async def doit() -> None:
-            async with hp.TaskHolder(ctx=ctx) as t:
-                t.add(a_task("one"))
-                t.add(a_task("two"))
+            async with hp.task_holder(ctx=ctx) as t:
+                t.add_coroutine(a_task("one"))
+                t.add_coroutine(a_task("two"))
                 waiter.set_result(True)
                 await loop.create_future()
 
@@ -171,20 +171,20 @@ class TestTaskHolder:
         assert called == ["one_start", "two_start", "one_cancelled", "two_cancelled"]
 
     async def test_can_iterate_tasks(self, ctx: hp.CTX) -> None:
-        async with hp.TaskHolder(ctx=ctx) as ts:
+        async with hp.task_holder(ctx=ctx) as ts:
 
             async def hi() -> None:
                 pass
 
-            t1 = ts.add(hi())
+            t1 = ts.add_coroutine(hi())
             assert list(ts) == [t1]
 
-            t2 = ts.add(hi())
-            t3 = ts.add(hi())
+            t2 = ts.add_coroutine(hi())
+            t3 = ts.add_coroutine(hi())
             assert list(ts) == [t1, t2, t3]
 
     async def test_can_say_if_the_holder_has_a_task(self, ctx: hp.CTX) -> None:
-        async with hp.TaskHolder(ctx=ctx) as ts:
+        async with hp.task_holder(ctx=ctx) as ts:
 
             async def hi() -> None:
                 pass
@@ -223,9 +223,9 @@ class TestTaskHolder:
             finally:
                 called.append("FIN_TWO")
 
-        async with hp.TaskHolder(ctx=ctx) as ts:
-            t1 = ts.add(one())
-            ts.add(two())
+        async with hp.task_holder(ctx=ctx) as ts:
+            t1 = ts.add_coroutine(one())
+            ts.add_coroutine(two())
 
             assert called == []
             await asyncio.sleep(0)
@@ -244,11 +244,11 @@ class TestTaskHolder:
             called = []
             made = {}
 
-            class TaskHolderManualClean(hp.TaskHolder):
+            class TaskHolderManualClean(_task_holder._TaskHolder):
                 async def cleaner(self) -> None:
                     await ctx.loop.create_future()
 
-            async with TaskHolderManualClean(ctx=ctx) as ts:
+            async with TaskHolderManualClean(_ctx=ctx) as ts:
 
                 async def one() -> None:
                     called.append("ONE")
@@ -270,11 +270,11 @@ class TestTaskHolder:
                     finally:
                         called.append("FIN_TWO")
 
-                t1 = ts.add(two())
+                t1 = ts.add_coroutine(two())
 
                 def add_one(res: hp.protocols.FutureStatus[None]) -> None:
                     called.append("ADD_ONE")
-                    made["t2"] = ts.add(one())
+                    made["t2"] = ts.add_coroutine(one())
 
                 t1.add_done_callback(add_one)
 
@@ -282,28 +282,28 @@ class TestTaskHolder:
                 await asyncio.sleep(0)
                 assert called == ["TWO"]
 
-                assert ts.ts == [t1]
-                await ts.clean()
-                assert ts.ts == [t1]
+                assert list(ts) == [t1]
+                await ts._perform_clean()
+                assert list(ts) == [t1]
 
                 t1.cancel()
                 await asyncio.sleep(0)
 
                 assert called == ["TWO", "CANC_TWO", "FIN_TWO"]
-                assert ts.ts == [t1]
+                assert list(ts) == [t1]
 
                 # The task holder only knows about t1
                 # And after the clean, we expect it to have made the t2
                 assert "t2" not in made
-                await ts.clean()
+                await ts._perform_clean()
                 assert called == ["TWO", "CANC_TWO", "FIN_TWO", "ADD_ONE", "ONE"]
-                assert ts.ts == [made["t2"]]
+                assert list(ts) == [made["t2"]]
 
                 made["t2"].cancel()
                 await asyncio.sleep(0)
-                assert ts.ts == [made["t2"]]
-                await ts.clean()
-                assert ts.ts == []
+                assert list(ts) == [made["t2"]]
+                await ts._perform_clean()
+                assert list(ts) == []
                 assert called == [
                     "TWO",
                     "CANC_TWO",

@@ -72,7 +72,7 @@ class _QueueSource:
 class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     ctx: _context.CTX[T_Tramp]
     queue: _protocols.Queue[QueueManagerResult[T_QueueContext]]
-    task_holder: _task_holder.TaskHolder[T_Tramp]
+    task_holder: _protocols.TaskHolder
     make_empty_context: Callable[[], T_QueueContext]
 
     sent_stop: asyncio.Event = dataclasses.field(default_factory=asyncio.Event, init=False)
@@ -199,7 +199,7 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
             source.finished.set()
             self._clear_sources()
 
-        task = self.task_holder.add(process_iterator())
+        task = self.task_holder.add_coroutine(process_iterator())
         task.add_done_callback(on_done)
         self._clear_sources()
 
@@ -230,7 +230,7 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
             input_type=QueueInput.COROUTINE, source=coro, parent_source=_parent_source
         )
         self.sources.append(source)
-        self.add_task(self.task_holder.add(coro), context=context, _parent_source=source)
+        self.add_task(self.task_holder.add_coroutine(coro), context=context, _parent_source=source)
 
         source.finished.set()
         self._clear_sources()
@@ -322,7 +322,7 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
             source.finished.set()
             self._clear_sources()
 
-        task = self.task_holder.add(process_generator())
+        task = self.task_holder.add_coroutine(process_generator())
         task.add_done_callback(on_done)
         self._clear_sources()
 
@@ -365,11 +365,11 @@ async def queue_manager[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.T
     if name:
         name = f"[{name}]-->"
 
-    with ctx.child(name=f"{name}queue_manager[task_holder]") as ctx_task_holder:
-        async with _task_holder.TaskHolder(ctx=ctx_task_holder) as task_holder:
+    with ctx.child(name=f"{name}queue_manager") as ctx_queue_manager:
+        async with _task_holder.task_holder(ctx=ctx_queue_manager) as task_holder:
             with (
-                ctx_task_holder.child(name=f"{name}queue_manager[streamer]") as ctx_streamer,
-                ctx_task_holder.child(name=f"{name}queue_manager[feeder]") as ctx_feeder,
+                ctx_queue_manager.child(name=f"{name}queue_manager[streamer]") as ctx_streamer,
+                ctx_queue_manager.child(name=f"{name}queue_manager[feeder]") as ctx_feeder,
             ):
                 streamer: _protocols.Queue[QueueManagerResult[T_QueueContext]] = _queue.queue(
                     ctx=ctx_streamer, empty_on_finished=True

@@ -107,6 +107,30 @@ class CTX[T_Tramp: Tramp = Tramp](Protocol):
 
     def child(self, *, name: str) -> Self: ...
 
+    def __enter__(self) -> Self: ...
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        value: BaseException | None,
+        tb: types.TracebackType | None,
+    ) -> None: ...
+
+
+class TaskHolder(Protocol):
+    def add_coroutine[T_Ret](
+        self, coro: Coroutine[object, object, T_Ret], *, silent: bool = False
+    ) -> asyncio.Task[T_Ret]: ...
+
+    def add_task[T_Ret](self, task: asyncio.Task[T_Ret]) -> asyncio.Task[T_Ret]: ...
+
+    @property
+    def pending(self) -> int: ...
+
+    def __contains__(self, task: asyncio.Task[object]) -> bool: ...
+
+    def __iter__(self) -> Iterator[WaitByCallback[object]]: ...
+
 
 class SyncQueue[T_Item = object](Protocol):
     def is_empty(self) -> bool: ...

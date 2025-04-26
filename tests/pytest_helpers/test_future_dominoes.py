@@ -19,14 +19,13 @@ def ctx() -> Iterator[hp.CTX]:
 
 
 @pytest.fixture
-async def task_holder(ctx: hp.CTX) -> AsyncGenerator[hp.TaskHolder]:
-    with ctx.child(name="task_holder") as ctx_task_holder:
-        async with hp.TaskHolder(ctx=ctx_task_holder) as task_holder:
-            yield task_holder
+async def task_holder(ctx: hp.CTX) -> AsyncGenerator[hp.protocols.TaskHolder]:
+    async with hp.task_holder(ctx=ctx) as task_holder:
+        yield task_holder
 
 
 class TestFutureDominoes:
-    async def test_it_works(self, task_holder: hp.TaskHolder) -> None:
+    async def test_it_works(self, task_holder: hp.protocols.TaskHolder) -> None:
         called: list[object] = []
         finished = asyncio.Event()
 
@@ -58,14 +57,14 @@ class TestFutureDominoes:
                 called.append("final")
                 finished.set()
 
-            task_holder.add(three())
-            task_holder.add(one())
+            task_holder.add_coroutine(three())
+            task_holder.add_coroutine(one())
 
             async def run_two() -> None:
                 async for r in two():
                     called.append(r)
 
-            task_holder.add(run_two())
+            task_holder.add_coroutine(run_two())
             futs.begin()
             await futs.finished.wait()
             await finished.wait()
@@ -84,7 +83,7 @@ class TestFutureDominoes:
             ]
 
     async def test_it_complains_if_not_all_futures_are_retrieved(
-        self, task_holder: hp.TaskHolder
+        self, task_holder: hp.protocols.TaskHolder
     ) -> None:
         called: list[object] = []
 
@@ -99,7 +98,7 @@ class TestFutureDominoes:
                     called.append("second")
                     finished.set()
 
-                task_holder.add(one())
+                task_holder.add_coroutine(one())
                 futs.begin()
                 await finished.wait()
 
@@ -114,7 +113,7 @@ class TestFutureDominoes:
         ]
 
     async def test_it_complains_if_not_all_futures_are_awaited(
-        self, task_holder: hp.TaskHolder
+        self, task_holder: hp.protocols.TaskHolder
     ) -> None:
         called: list[object] = []
 
@@ -131,7 +130,7 @@ class TestFutureDominoes:
                     called.append("second")
                     finished.set()
 
-                task_holder.add(one())
+                task_holder.add_coroutine(one())
                 futs.begin()
                 await finished.wait()
 
