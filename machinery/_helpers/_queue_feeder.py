@@ -111,7 +111,11 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
             case AsyncGenerator():
                 self.add_async_generator(result, context=context, _parent_source=source)
             case _ if callable(result) and len(inspect.signature(result).parameters) == 0:
-                self.add_sync_function(result, context=context, _parent_source=source)
+                self._queue.append_instruction(
+                    functools.partial(
+                        self.add_sync_function, result, context=context, _parent_source=source
+                    )
+                )
             case _:
                 self._queue.append(
                     QueueManagerSuccess(

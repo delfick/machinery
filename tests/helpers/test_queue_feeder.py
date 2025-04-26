@@ -699,3 +699,84 @@ class TestQueueFeeder:
             ("iteration_stop", "generator", ((hp.QueueInput.ASYNC_GENERATOR, gen),)),
             "stopped",
         ]
+
+    async def test_it_does_not_extend_callable_results_with_parameters(self, ctx: hp.CTX) -> None:
+        got: list[object] = []
+
+        def func1() -> str:
+            return "hello"
+
+        def func2(a: int) -> str:
+            return "hello"
+
+        def get_func2() -> object:
+            return func2
+
+        class Func3:
+            def __call__(self) -> object:
+                return get_func2
+
+        func3 = Func3()
+
+        class Func4:
+            def __call__(self, b: int) -> str:
+                return "stuff"
+
+        func4 = Func4()
+
+        async with hp.queue_manager(ctx=ctx, make_empty_context=lambda: "") as (streamer, feeder):
+
+            def iterate() -> Iterator[object]:
+                yield func1
+                yield func3
+                yield func4
+
+            it = iterate()
+
+            feeder.add_sync_iterator(it, context="iterator")
+            feeder.set_as_finished_if_out_of_sources()
+
+            async for result in streamer:
+                match result:
+                    case hp.QueueManagerSuccess(value=value, context=context, sources=sources):
+                        got.append((value, context, sources))
+
+                    case hp.QueueManagerIterationStop(context=context, sources=sources):
+                        got.append(("iteration_stopped", context, sources))
+
+                    case hp.QueueManagerStopped():
+                        got.append("stopped")
+
+                    case _:
+                        raise AssertionError(result)
+
+        assert got == [
+            (
+                "hello",
+                "iterator",
+                (
+                    (hp.QueueInput.SYNC_FUNCTION, func1),
+                    (hp.QueueInput.SYNC_GENERATOR, it),
+                ),
+            ),
+            (
+                func4,
+                "iterator",
+                ((hp.QueueInput.SYNC_GENERATOR, it),),
+            ),
+            (
+                "iteration_stopped",
+                "iterator",
+                ((hp.QueueInput.SYNC_GENERATOR, it),),
+            ),
+            (
+                func2,
+                "iterator",
+                (
+                    (hp.QueueInput.SYNC_FUNCTION, get_func2),
+                    (hp.QueueInput.SYNC_FUNCTION, func3),
+                    (hp.QueueInput.SYNC_GENERATOR, it),
+                ),
+            ),
+            "stopped",
+        ]
