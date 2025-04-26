@@ -34,9 +34,6 @@ class Domino(Protocol):
 
 class FutureDominoes[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp](Protocol):
     @property
-    def ctx(self) -> hp.CTX[T_Tramp]: ...
-
-    @property
     def started(self) -> asyncio.Event: ...
 
     @property
@@ -94,14 +91,14 @@ class _Domino[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class _FutureDominoes[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
-    ctx: hp.CTX[T_Tramp]
+    _ctx: hp.CTX[T_Tramp]
 
     started: asyncio.Event
     finished: asyncio.Event
 
-    expected: int
-    futs: Mapping[int, Domino]
-    retrieved: dict[int, asyncio.Future[None]]
+    _expected: int
+    _futs: Mapping[int, Domino]
+    _retrieved: dict[int, asyncio.Future[None]]
 
     def __enter__(self) -> Self:
         return self
@@ -152,12 +149,12 @@ class _FutureDominoes[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
             )
 
         instance = cls(
-            ctx=ctx,
+            _ctx=ctx,
             started=started,
             finished=finished,
-            expected=expected,
-            futs=futs,
-            retrieved=retrieved,
+            _expected=expected,
+            _futs=futs,
+            _retrieved=retrieved,
         )
 
         def finished_on_ctx_done(res: hp.protocols.FutureStatus[None]) -> None:
@@ -186,12 +183,12 @@ class _FutureDominoes[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
 
     def check_finished(self) -> None:
         not_done: set[int] = set()
-        for i, fut in self.futs.items():
+        for i, fut in self._futs.items():
             if not fut.done():
                 not_done.add(i)
 
         not_retrieved: set[int] = set()
-        for i, retrieved in self.retrieved.items():
+        for i, retrieved in self._retrieved.items():
             if not retrieved.done():
                 not_retrieved.add(i)
 
@@ -202,14 +199,14 @@ class _FutureDominoes[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
             raise AssertionError(f"Not all the futures were completed: {not_done}")
 
     def __getitem__(self, num: int) -> Domino:
-        if not self.retrieved[num].done():
-            self.retrieved[num].set_result(None)
-        return self.futs[num]
+        if not self._retrieved[num].done():
+            self._retrieved[num].set_result(None)
+        return self._futs[num]
 
     async def _allow_real_loop(self) -> None:
         while (
             len(
-                self.ctx.loop._ready  # type: ignore[attr-defined]
+                self._ctx.loop._ready  # type: ignore[attr-defined]
             )
             > 0
         ):
