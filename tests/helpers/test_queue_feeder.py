@@ -780,3 +780,152 @@ class TestQueueFeeder:
             ),
             "stopped",
         ]
+
+    async def test_it_does_not_extend_async_generators(self, ctx: hp.CTX) -> None:
+        got: list[object] = []
+
+        async def generator1() -> AsyncGenerator[int]:
+            yield 1
+            yield 2
+
+        gen1 = generator1()
+        gen1b = generator1()
+
+        async def generator2() -> AsyncGenerator[object]:
+            yield 3
+            yield gen1
+            yield 4
+
+        gen2 = generator2()
+
+        async def generator3() -> AsyncGenerator[object]:
+            yield gen2
+            yield gen1b
+
+        async with hp.queue_manager(ctx=ctx, make_empty_context=lambda: "") as (streamer, feeder):
+            feeder.add_sync_function(generator3, context="things")
+            feeder.set_as_finished_if_out_of_sources()
+
+            async for result in streamer:
+                match result:
+                    case hp.QueueManagerSuccess(value=value, context=context, sources=sources):
+                        got.append((value, context, sources))
+
+                    case hp.QueueManagerIterationStop(context=context, sources=sources):
+                        got.append(("iteration_stopped", context, sources))
+
+                    case hp.QueueManagerStopped():
+                        got.append("stopped")
+
+                    case _:
+                        raise AssertionError(result)
+
+        @dataclasses.dataclass
+        class IsGen3:
+            got: object = dataclasses.field(init=False)
+
+            def __eq__(self, o: object) -> bool:
+                self.got = o
+                return isinstance(o, AsyncGenerator) and o.ag_code.co_name == "generator3"
+
+            def __repr__(self) -> str:
+                if hasattr(self, "got"):
+                    return repr(self.got)
+                else:
+                    return "<IsGen3>"
+
+        assert got == [
+            (
+                "iteration_stopped",
+                "things",
+                (
+                    (hp.QueueInput.ASYNC_GENERATOR, IsGen3()),
+                    (hp.QueueInput.SYNC_FUNCTION, generator3),
+                ),
+            ),
+            (
+                3,
+                "things",
+                (
+                    (hp.QueueInput.ASYNC_GENERATOR, gen2),
+                    (hp.QueueInput.ASYNC_GENERATOR, IsGen3()),
+                    (hp.QueueInput.SYNC_FUNCTION, generator3),
+                ),
+            ),
+            (
+                1,
+                "things",
+                (
+                    (hp.QueueInput.ASYNC_GENERATOR, gen1b),
+                    (hp.QueueInput.ASYNC_GENERATOR, IsGen3()),
+                    (hp.QueueInput.SYNC_FUNCTION, generator3),
+                ),
+            ),
+            (
+                4,
+                "things",
+                (
+                    (hp.QueueInput.ASYNC_GENERATOR, gen2),
+                    (hp.QueueInput.ASYNC_GENERATOR, IsGen3()),
+                    (hp.QueueInput.SYNC_FUNCTION, generator3),
+                ),
+            ),
+            (
+                "iteration_stopped",
+                "things",
+                (
+                    (hp.QueueInput.ASYNC_GENERATOR, gen2),
+                    (hp.QueueInput.ASYNC_GENERATOR, IsGen3()),
+                    (hp.QueueInput.SYNC_FUNCTION, generator3),
+                ),
+            ),
+            (
+                2,
+                "things",
+                (
+                    (hp.QueueInput.ASYNC_GENERATOR, gen1b),
+                    (hp.QueueInput.ASYNC_GENERATOR, IsGen3()),
+                    (hp.QueueInput.SYNC_FUNCTION, generator3),
+                ),
+            ),
+            (
+                "iteration_stopped",
+                "things",
+                (
+                    (hp.QueueInput.ASYNC_GENERATOR, gen1b),
+                    (hp.QueueInput.ASYNC_GENERATOR, IsGen3()),
+                    (hp.QueueInput.SYNC_FUNCTION, generator3),
+                ),
+            ),
+            (
+                1,
+                "things",
+                (
+                    (hp.QueueInput.ASYNC_GENERATOR, gen1),
+                    (hp.QueueInput.ASYNC_GENERATOR, gen2),
+                    (hp.QueueInput.ASYNC_GENERATOR, IsGen3()),
+                    (hp.QueueInput.SYNC_FUNCTION, generator3),
+                ),
+            ),
+            (
+                2,
+                "things",
+                (
+                    (hp.QueueInput.ASYNC_GENERATOR, gen1),
+                    (hp.QueueInput.ASYNC_GENERATOR, gen2),
+                    (hp.QueueInput.ASYNC_GENERATOR, IsGen3()),
+                    (hp.QueueInput.SYNC_FUNCTION, generator3),
+                ),
+            ),
+            (
+                "iteration_stopped",
+                "things",
+                (
+                    (hp.QueueInput.ASYNC_GENERATOR, gen1),
+                    (hp.QueueInput.ASYNC_GENERATOR, gen2),
+                    (hp.QueueInput.ASYNC_GENERATOR, IsGen3()),
+                    (hp.QueueInput.SYNC_FUNCTION, generator3),
+                ),
+            ),
+            "stopped",
+        ]
