@@ -280,6 +280,58 @@ class TestQueueFeeder:
             "stopped",
         ]
 
+    async def test_it_can_stop_sync_iterator_before_its_finished(self, ctx: hp.CTX) -> None:
+        got: list[object] = []
+
+        class ComputerSaysNo(Exception):
+            pass
+
+        error = ComputerSaysNo()
+
+        async with hp.queue_manager(ctx=ctx, make_empty_context=lambda: "") as (streamer, feeder):
+
+            def generator() -> Iterator[str]:
+                yield "one"
+                yield "two"
+                yield "three"
+
+            feeder.add_sync_iterator(generator(), context="a_generator")
+            feeder.add_value("some_value")
+            feeder.add_sync_iterator([1, 2, "three", 4], context="a_list")
+            feeder.set_as_finished_if_out_of_sources()
+
+            async for result in streamer:
+                match result:
+                    case hp.QueueManagerSuccess(value=value, context=context):
+                        got.append((value, context))
+                        if value == 2 and context == "a_list":
+                            feeder.add_value("another_value")
+                        elif value == "one" and context == "a_generator":
+                            ctx.set_exception(error)
+                        elif value == "two" and context == "a_generator":
+                            feeder.add_value("yo")
+                    case hp.QueueManagerIterationStop(context="a_generator", exception=exception):
+                        got.append(("gen_stopped", exception))
+                    case hp.QueueManagerIterationStop(context="a_list", exception=exception):
+                        got.append(("list_stopped", exception))
+                    case hp.QueueManagerStopped(exception=exception):
+                        got.append(("stopped", exception))
+                    case _:
+                        raise AssertionError(result)
+
+        assert got == [
+            ("some_value", ""),
+            ("one", "a_generator"),
+            ("stopped", error),
+            (1, "a_list"),
+            ("two", "a_generator"),
+            (("gen_stopped", error)),
+            (2, "a_list"),
+            ("list_stopped", error),
+            ("yo", ""),
+            ("another_value", ""),
+        ]
+
     async def test_it_can_feed_in_an_asynchronous_generator(self, ctx: hp.CTX) -> None:
         got: list[object] = []
 
@@ -326,4 +378,57 @@ class TestQueueFeeder:
             (4, "a_list"),
             ("list_stopped"),
             "stopped",
+        ]
+
+    async def test_it_can_stop_async_generator_before_its_finished(self, ctx: hp.CTX) -> None:
+        got: list[object] = []
+
+        class ComputerSaysNo(Exception):
+            pass
+
+        error = ComputerSaysNo()
+
+        async with hp.queue_manager(ctx=ctx, make_empty_context=lambda: "") as (streamer, feeder):
+
+            async def generator() -> AsyncGenerator[str]:
+                yield "one"
+                yield "two"
+                yield "three"
+
+            feeder.add_async_generator(generator(), context="a_generator")
+            feeder.add_value("some_value")
+            feeder.add_sync_iterator([1, 2, "three", 4], context="a_list")
+            feeder.set_as_finished_if_out_of_sources()
+
+            async for result in streamer:
+                match result:
+                    case hp.QueueManagerSuccess(value=value, context=context):
+                        got.append((value, context))
+                        if value == 2 and context == "a_list":
+                            feeder.add_value("another_value")
+                        elif value == "one" and context == "a_generator":
+                            ctx.set_exception(error)
+                        elif value == "two" and context == "a_generator":
+                            feeder.add_value("yo")
+                    case hp.QueueManagerIterationStop(context="a_generator", exception=exception):
+                        got.append(("gen_stopped", exception))
+                    case hp.QueueManagerIterationStop(context="a_list", exception=exception):
+                        got.append(("list_stopped", exception))
+                    case hp.QueueManagerStopped(exception=exception):
+                        got.append(("stopped", exception))
+                    case _:
+                        raise AssertionError(result)
+
+        assert got == [
+            ("some_value", ""),
+            (1, "a_list"),
+            ("one", "a_generator"),
+            ("stopped", error),
+            (2, "a_list"),
+            ("two", "a_generator"),
+            (("gen_stopped", error)),
+            ("another_value", ""),
+            ("three", "a_list"),
+            ("list_stopped", error),
+            ("yo", ""),
         ]

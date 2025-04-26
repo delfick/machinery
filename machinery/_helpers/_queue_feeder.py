@@ -15,7 +15,7 @@ from collections.abc import (
 )
 from typing import Optional
 
-from . import _protocols, _queue, _task_holder
+from . import _futures, _protocols, _queue, _task_holder
 
 
 class QueueInput(enum.Enum):
@@ -173,8 +173,11 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
                 return
             source.finished.set()
 
-            if exc is None and self._ctx.cancelled():
-                exc = asyncio.CancelledError()
+            if exc is None and self._ctx.done():
+                if self._ctx.cancelled():
+                    exc = asyncio.CancelledError()
+                else:
+                    exc = self._ctx.exception()
 
             self._queue.append(
                 QueueManagerIterationStop(
@@ -187,6 +190,10 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
             self._clear_sources()
 
         def get_next() -> None:
+            if self._ctx.done():
+                on_done()
+                return
+
             try:
                 nxt = next(iterator)
             except StopIteration:
@@ -297,9 +304,25 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
         )
         self._sources.append(source)
 
-        def on_done(exc: BaseException | None = None) -> None:
-            if exc is None and self._ctx.cancelled():
+        def ensure_gen_closed(res: _protocols.FutureStatus[None]) -> None:
+            exc: BaseException | None
+            if res.cancelled():
                 exc = asyncio.CancelledError()
+            else:
+                exc = res.exception()
+
+            self._task_holder.add_coroutine(_futures.stop_async_generator(agen, exc=exc))
+
+        self._ctx.add_done_callback(ensure_gen_closed)
+
+        def on_done(exc: BaseException | None = None) -> None:
+            self._ctx.remove_done_callback(ensure_gen_closed)
+
+            if exc is None and self._ctx.done():
+                if self._ctx.cancelled():
+                    exc = asyncio.CancelledError()
+                else:
+                    exc = self._ctx.exception()
 
             self._queue.append(
                 QueueManagerIterationStop(
