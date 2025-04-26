@@ -71,51 +71,42 @@ class Tramp:
             s = f"{s}>"
         return s
 
-    def silent_reporter(self, res: _protocols.FutureStatus[Any]) -> Literal[True] | None:
+    def silent_reporter(self, res: _protocols.FutureStatus[Any]) -> None:
         """
         A generic reporter for asyncio tasks that doesn't log errors.
 
         This means that exceptions are **not** logged to the terminal and you won't
         get warnings about tasks not being looked at when they finish.
-
-        This method will return ``True`` if there was no exception and ``None``
-        otherwise.
-
-        It also handles and silences ``asyncio.CancelledError``.
         """
-        if not res.cancelled():
-            exc = res.exception()
-            if not exc:
-                res.result()
-                return True
+        if res.cancelled():
+            return
 
-        return None
+        exc = res.exception()
+        if exc is None:
+            res.result()
 
-    def reporter(self, res: _protocols.FutureStatus[Any]) -> Literal[True] | None:
+    def reporter(self, res: _protocols.FutureStatus[Any]) -> None:
         """
         A generic reporter for asyncio tasks.
 
         This means that exceptions are logged to the terminal and you won't
         get warnings about tasks not being looked at when they finish.
 
-        This method will return ``True`` if there was no exception and ``None``
-        otherwise.
-
-        It also handles and silences ``asyncio.CancelledError``.
+        Note that it will not report asyncio.CancelledError() or KeyboardInterrupt.
         """
-        if not res.cancelled():
-            exc = res.exception()
-            if exc:
-                if not isinstance(exc, KeyboardInterrupt):
-                    if exc.__traceback__ is not None:
-                        self.log_exception(exc, exc_info=(type(exc), exc, exc.__traceback__))
-                    else:
-                        self.log_exception(exc)
-            else:
-                res.result()
-                return True
+        if res.cancelled():
+            return
 
-        return None
+        exc = res.exception()
+        if exc is None:
+            res.result()
+            return
+
+        if not isinstance(exc, KeyboardInterrupt):
+            if exc.__traceback__ is not None:
+                self.log_exception(exc, exc_info=(type(exc), exc, exc.__traceback__))
+            else:
+                self.log_exception(exc)
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)

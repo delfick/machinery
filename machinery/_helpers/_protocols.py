@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import types
 from collections.abc import AsyncGenerator, Callable, Coroutine, Iterable, Iterator
-from typing import TYPE_CHECKING, Any, Literal, Protocol, Self, cast
+from typing import TYPE_CHECKING, Any, Protocol, Self, cast
 
 
 class FutureStatus[T_Ret](Protocol):
@@ -39,10 +39,6 @@ class FutureCTXCallback[T_Ret, T_Tramp: Tramp = Tramp](Protocol):
     def __call__(self, ctx: CTX[T_Tramp], res: FutureStatus[T_Ret], /) -> None: ...
 
 
-class Reporter[T_Ret](Protocol):
-    def __call__(self, res: FutureStatus[T_Ret]) -> Literal[True] | None: ...
-
-
 class WaitByCallback[T_Ret](Protocol):
     def done(self) -> bool: ...
     def cancel(self) -> bool: ...
@@ -70,10 +66,10 @@ class Tramp(Protocol):
     def fut_to_string(self, f: asyncio.Future[Any] | WithRepr, with_name: bool = True) -> str: ...
 
     @property
-    def reporter(self) -> Reporter[Any]: ...
+    def reporter(self) -> FutureCallback[Any]: ...
 
     @property
-    def silent_reporter(self) -> Reporter[Any]: ...
+    def silent_reporter(self) -> FutureCallback[Any]: ...
 
 
 class CTX[T_Tramp: Tramp = Tramp](Protocol):

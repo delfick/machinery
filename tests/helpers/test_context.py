@@ -223,7 +223,7 @@ class TestTramp:
             fut: asyncio.Future[None] = loop.create_future()
             fut.cancel()
 
-            assert tramp.silent_reporter(fut) is None
+            tramp.silent_reporter(fut)
             assert caplog.text == ""
 
         async def test_does_nothing_if_the_future_has_an_exception(
@@ -235,10 +235,10 @@ class TestTramp:
             tramp = hp.Tramp(log=log)
             fut: asyncio.Future[None] = loop.create_future()
             fut.set_exception(Exception("wat"))
-            assert tramp.silent_reporter(fut) is None
+            tramp.silent_reporter(fut)
             assert caplog.text == ""
 
-        async def test_returns_true_if_we_have_a_result(
+        async def test_does_nothing_if_we_have_a_result(
             self,
             log: logging.Logger,
             caplog: pytest.LogCaptureFixture,
@@ -251,7 +251,7 @@ class TestTramp:
             tramp = hp.Tramp(log=log)
             fut: asyncio.Future[Res] = loop.create_future()
             fut.set_result(Res(name="result"))
-            assert tramp.silent_reporter(fut) is True
+            tramp.silent_reporter(fut)
             assert caplog.text == ""
 
     class TestReporter:
@@ -268,7 +268,7 @@ class TestTramp:
             tramp = hp.Tramp(log=log)
             fut: asyncio.Future[None] = loop.create_future()
             fut.cancel()
-            assert tramp.reporter(fut) is None
+            tramp.reporter(fut)
             assert caplog.text == ""
 
         async def test_logs_exception_if_the_future_has_an_exception(
@@ -285,7 +285,7 @@ class TestTramp:
             except Exception as e:
                 fut.set_exception(e)
 
-            assert tramp.reporter(fut) is None
+            tramp.reporter(fut)
 
             lines = [
                 "ERROR    root:_context.py:* computer says no",
@@ -298,7 +298,7 @@ class TestTramp:
             matcher = pytest.LineMatcher(caplog.text.split("\n"))
             matcher.fnmatch_lines(lines)
 
-        async def test_returns_true_if_we_have_a_result(
+        async def test_it_does_nothing_if_we_have_a_result(
             self,
             log: logging.Logger,
             caplog: pytest.LogCaptureFixture,
@@ -311,7 +311,7 @@ class TestTramp:
             tramp = hp.Tramp(log=log)
             fut: asyncio.Future[Res] = loop.create_future()
             fut.set_result(Res(name="result"))
-            assert tramp.reporter(fut) is True
+            tramp.reporter(fut)
             assert caplog.text == ""
 
 
