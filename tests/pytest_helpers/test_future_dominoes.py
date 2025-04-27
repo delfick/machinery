@@ -24,12 +24,12 @@ async def task_holder(ctx: hp.CTX) -> AsyncGenerator[hp.protocols.TaskHolder]:
         yield task_holder
 
 
-class TestFutureDominoes:
+class TestFutureDominos:
     async def test_it_works(self, task_holder: hp.protocols.TaskHolder) -> None:
         called: list[object] = []
         finished = asyncio.Event()
 
-        async with thp.future_dominoes(expected=8) as futs:
+        async with thp.future_dominos(expected=8) as futs:
 
             async def one() -> None:
                 await futs[1]
@@ -88,7 +88,7 @@ class TestFutureDominoes:
         called: list[object] = []
 
         async def incomplete() -> None:
-            async with thp.future_dominoes(expected=4) as futs:
+            async with thp.future_dominos(expected=4) as futs:
                 finished = asyncio.Event()
 
                 async def one() -> None:
@@ -118,7 +118,7 @@ class TestFutureDominoes:
         called: list[object] = []
 
         async def incomplete() -> None:
-            async with thp.future_dominoes(expected=4) as futs:
+            async with thp.future_dominos(expected=4) as futs:
                 finished = asyncio.Event()
 
                 async def one() -> None:

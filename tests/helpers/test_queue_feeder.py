@@ -572,7 +572,7 @@ class TestQueueFeeder:
 
         closure = locals()
 
-        async with thp.future_dominoes(expected=8, loop=ctx.loop) as futs:
+        async with thp.future_dominos(expected=8, loop=ctx.loop) as futs:
             async with hp.queue_manager(ctx=ctx, make_empty_context=lambda: "") as (
                 streamer,
                 feeder,

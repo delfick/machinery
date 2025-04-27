@@ -12,7 +12,7 @@ from machinery import helpers as hp
 
 class Domino(Protocol):
     """
-    Used to represent the futures provided by FutureDominoes.
+    Used to represent the futures provided by FutureDominos.
     """
 
     def __await__(self) -> Generator[None]:
@@ -63,7 +63,7 @@ class Domino(Protocol):
         """
 
 
-class FutureDominoes[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp](Protocol):
+class FutureDominos[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp](Protocol):
     """
     An object that represents a "domino" set of futures that only complete as
     each previous domino is retrieved and awaited
@@ -72,18 +72,18 @@ class FutureDominoes[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp](Protocol)
     @property
     def started(self) -> asyncio.Event:
         """
-        This is set for us when the dominoes have started
+        This is set for us when the dominos have started
         """
 
     @property
     def finished(self) -> asyncio.Event:
         """
-        This is set for us when all the dominoes have been knocked over
+        This is set for us when all the dominos have been knocked over
         """
 
     def begin(self) -> None:
         """
-        Used by the test to indicate that the dominoes should begin
+        Used by the test to indicate that the dominos should begin
         """
 
     def __getitem__(self, num: int) -> Domino:
@@ -179,9 +179,9 @@ class _Domino[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class _FutureDominoes[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
+class _FutureDominos[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
     """
-    Implementation for our future dominoes.
+    Implementation for our future dominos.
     """
 
     _ctx: hp.CTX[T_Tramp]
@@ -232,7 +232,7 @@ class _FutureDominoes[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
 
         requirements: list[tuple[asyncio.Future[None], asyncio.Future[None]]] = []
 
-        # We make sure that when the dominoes are retrieved the first time that
+        # We make sure that when the dominos are retrieved the first time that
         # is announced.
         # We also create each domino and provide that to our list of futures
         for i in range(1, expected + 1):
@@ -273,17 +273,17 @@ class _FutureDominoes[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
 
         async def knock() -> None:
             """
-            This is what ends up knocking over the dominoes.
+            This is what ends up knocking over the dominos.
 
             Essentially we create a background task that waits for each domino
             to be retrieved and awaited before we then set the next domino as
             done.
 
-            This means that we don't knock over dominoes until they have actually
+            This means that we don't knock over dominos until they have actually
             been retrieved.
 
-            Otherwise later dominoes may be marked as complete if they are
-            retrieved before earlier dominoes.
+            Otherwise later dominos may be marked as complete if they are
+            retrieved before earlier dominos.
             """
             await started.wait()
 
@@ -302,17 +302,17 @@ class _FutureDominoes[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
 
     def begin(self) -> None:
         """
-        Mark the dominoes as ready to starting knocking over
+        Mark the dominos as ready to starting knocking over
         """
         self.started.set()
 
     def check_finished(self) -> None:
         """
         Run when the context manager finishes, and ensures that the test
-        retrieved and awaited all the dominoes.
+        retrieved and awaited all the dominos.
 
         Otherwise the test may silently passed even if it didn't use up all
-        the dominoes!
+        the dominos!
         """
         not_done: set[int] = set()
         for i, fut in self._futs.items():
@@ -334,7 +334,7 @@ class _FutureDominoes[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
         """
         Retrieve the domino for this number.
 
-        Note that dominoes are 1-indexed and so if we expect 4 dominoes then
+        Note that dominos are 1-indexed and so if we expect 4 dominos then
         that means we expect to retrieve and await ``futs[1]``, ``futs[2]``,
         ``futs[3]`` and ``futs[4]``.
         """
@@ -344,7 +344,7 @@ class _FutureDominoes[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
 
     async def _allow_real_loop(self) -> None:
         """
-        We use this when we are knocking over dominoes to ensure that as each
+        We use this when we are knocking over dominos to ensure that as each
         domino is knocked over, anything else on the loop is given time to
         execute before we knock over the next domino.
 
@@ -360,13 +360,13 @@ class _FutureDominoes[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
 
 
 @contextlib.asynccontextmanager
-async def future_dominoes(
+async def future_dominos(
     *,
     expected: int,
     loop: asyncio.AbstractEventLoop | None = None,
     log: logging.Logger | None = None,
     name: str = "",
-) -> AsyncGenerator[FutureDominoes]:
+) -> AsyncGenerator[FutureDominos]:
     """
     A helper to start a domino of futures.
 
@@ -379,7 +379,7 @@ async def future_dominoes(
         from machinery import test_helpers as thp
 
         async def run() -> None:
-            async with thp.future_dominoes(loop=loop, expected=8) as futs:
+            async with thp.future_dominos(loop=loop, expected=8) as futs:
                 called: list[object] = []
 
                 async def one() -> None:
@@ -442,16 +442,16 @@ async def future_dominoes(
     tramp: hp.protocols.Tramp = hp.Tramp(log=log)
     ctx = hp.CTX.beginning(loop=loop, name="::", tramp=tramp)
 
-    with ctx.child(name="{name}future_dominoes", prefix=name) as ctx_future_dominoes:
+    with ctx.child(name="{name}future_dominos", prefix=name) as ctx_future_dominos:
         with (
-            ctx_future_dominoes.child(name="dominoes") as ctx_dominoes,
-            ctx_future_dominoes.child(name="task_holder") as ctx_task_holder,
+            ctx_future_dominos.child(name="dominos") as ctx_dominos,
+            ctx_future_dominos.child(name="task_holder") as ctx_task_holder,
         ):
             async with hp.task_holder(ctx=ctx_task_holder) as task_holder:
-                with _FutureDominoes.create(
-                    ctx=ctx_dominoes, task_holder=task_holder, expected=expected
-                ) as dominoes:
-                    yield dominoes
+                with _FutureDominos.create(
+                    ctx=ctx_dominos, task_holder=task_holder, expected=expected
+                ) as dominos:
+                    yield dominos
                     ctx_task_holder.cancel()
 
 
