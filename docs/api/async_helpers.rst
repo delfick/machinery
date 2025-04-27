@@ -46,6 +46,40 @@ Queues
 
 .. autofunction:: machinery.helpers.queue
 
+Queue Manager
+-------------
+
+.. autoprotocol:: machinery.helpers.protocols.QueueFeeder
+
+.. autoprotocol:: machinery.helpers.protocols.Streamer
+
+.. autofunction:: machinery.helpers.queue_manager
+
+.. autoenum:: machinery.helpers.QueueInput
+
+.. autoclass:: machinery.helpers.QueueManagerSuccess
+
+.. autoclass:: machinery.helpers.QueueManagerFailure
+
+.. autoclass:: machinery.helpers.QueueManagerIterationStop
+
+.. autoclass:: machinery.helpers.QueueManagerStopped
+
+Also provided is the type alias for the union of types that the streamer may
+produce as ``machinery.helpers.QueueManagerResult``:
+
+QueueManagerResult
+++++++++++++++++++
+
+.. code-block:: python
+
+    type QueueManagerResult[T_QueueContext] = (
+        QueueManagerSuccess[T_QueueContext]
+        | QueueManagerFailure[T_QueueContext]
+        | QueueManagerIterationStop[T_QueueContext]
+        | QueueManagerStopped
+    )
+
 Odd helpers
 -----------
 
@@ -58,3 +92,15 @@ There are few standalone helpers for some odd functionality:
 .. autofunction:: machinery.helpers.noncancelled_results_from_futs
 
 .. autofunction:: machinery.helpers.find_and_apply_result
+
+And some standalone protocols for some concepts:
+
+.. autoprotocol:: machinery.helpers.protocols.FutureStatus
+
+.. autoprotocol:: machinery.helpers.protocols.FutureCallback
+
+.. autoprotocol:: machinery.helpers.protocols.FutureCTXCallback
+
+.. autoprotocol:: machinery.helpers.protocols.WaitByCallback
+
+.. autoprotocol:: machinery.helpers.protocols.WithRepr

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import asyncio
 import types
 from collections.abc import AsyncGenerator, Callable, Coroutine, Generator, Iterable, Iterator
@@ -36,7 +34,7 @@ class FutureCTXCallback[T_Ret, T_Tramp: Tramp = Tramp](Protocol):
     """
 
     def __hash__(self) -> int: ...
-    def __call__(self, ctx: CTX[T_Tramp], res: FutureStatus[T_Ret], /) -> None: ...
+    def __call__(self, ctx: "CTX[T_Tramp]", res: FutureStatus[T_Ret], /) -> None: ...
 
 
 class WaitByCallback[T_Ret](Protocol):
