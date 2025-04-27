@@ -478,17 +478,49 @@ class Ticker(Protocol):
 
 
 class SyncQueue[T_Item = object](Protocol):
-    def is_empty(self) -> bool: ...
+    """
+    Represents an object that can be used as a synchronous queue.
 
-    def __len__(self) -> int: ...
+    The default implementation is via ``hp.sync_queue`` and wraps the standard
+    library ``queue.Queue`` class.
+    """
 
-    def append(self, item: T_Item) -> None: ...
+    def is_empty(self) -> bool:
+        """
+        Return true if the queue is currently empty
+        """
 
-    def __iter__(self) -> Iterator[T_Item]: ...
+    def __len__(self) -> int:
+        """
+        Return how many items are in the queue.
+        """
 
-    def get_all(self) -> Iterator[T_Item]: ...
+    def append(self, item: T_Item) -> None:
+        """
+        Add something to the queue
+        """
 
-    def remaining(self) -> Iterator[T_Item]: ...
+    def __iter__(self) -> Iterator[T_Item]:
+        """
+        Iterate over the items in the queue. This is re-entrant if the iteration
+        is stopped and restarted.
+        """
+
+    def get_all(self) -> Iterator[T_Item]:
+        """
+        Returns an iterator over all the items in the queue. This is re-entrant
+        if the iteration is stopped and restarted.
+        """
+
+    def remaining(self) -> Iterator[T_Item]:
+        """
+        Returns an iterator that returns everything that remains in the queue.
+
+        Useful after the queue has stopped and there are still items remaining.
+
+        This iteration will not wait for new items to be added to the queue when
+        all the remaining items are yielded
+        """
 
 
 class LimitedQueue[T_Item = object](Protocol):
