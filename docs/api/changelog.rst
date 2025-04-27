@@ -5,7 +5,7 @@ Changelog
 
 .. _release-0.2.0:
 
-0.2.0 - TBD
+0.2.0 - 27 April 2025
     * Did a giant cleanup. This is effectively a different library with some
       similar concepts in comparison to the code that was initially copied into
       this project. Lots has been deleted from that as well or re-imagined
