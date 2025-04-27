@@ -626,41 +626,127 @@ class Queue[T_Item = object](Protocol):
 
 
 class QueueFeeder[T_QueueContext](Protocol):
-    def set_as_finished_if_out_of_sources(self) -> None: ...
+    """
+    This represents one of the two objects returned by ``hp.queue_manager`` and
+    is used to feed items into the streamer it also creates.
+
+    In the default implementation, sources may return "extendable" values which
+    will be then used themselves as input sources rather than yielded.
+
+    These include:
+
+    * callables that only take on argument
+    * async generators
+    * sync generators
+    * Coroutine objects
+    * asyncio.Task objects
+
+    It does not include normal iterable objects like lists.
+    """
+
+    def set_as_finished_if_out_of_sources(self) -> None:
+        """
+        Calling this will ensure that the streamer stops waiting for more input
+        after all sources have dried up.
+        """
 
     def add_sync_function(
         self, func: Callable[[], object], *, context: T_QueueContext | None = None
-    ) -> None: ...
+    ) -> None:
+        """
+        Register a synchronous function as an input source.
+
+        The value from this function will be provided to the streamer with the
+        provided context.
+
+        In the default implementation, an "extendable" result will be used as
+        an input source rather than given to the streamer as a value.
+        """
 
     def add_sync_iterator(
         self,
         iterator: Iterable[object] | Iterator[object],
         *,
         context: T_QueueContext | None = None,
-    ) -> None: ...
+    ) -> None:
+        """
+        Register a synchronous iterator as an input source.
 
-    def add_value(self, value: object, *, context: T_QueueContext | None = None) -> None: ...
+        This can either be a normal Generator object or any other iterable
+        object like a list.
+
+        In the default implementation, any "extendable" result will be used as
+        an input source rather than given to the streamer as a value.
+
+        In the default implementation, every iteration will be added to the end
+        of the streamer as they happen.
+        """
+
+    def add_value(self, value: object, *, context: T_QueueContext | None = None) -> None:
+        """
+        Add a single value to the streamer
+
+        In the default implementation, if the value is "extendable" then it will
+        be used as an input source rather than given to the streamer as a value
+        """
 
     def add_coroutine(
         self, coro: Coroutine[object, object, object], *, context: T_QueueContext | None = None
-    ) -> None: ...
+    ) -> None:
+        """
+        Add a coroutine as a source.
+
+        In the default implementation, this coroutine is used to create an
+        asyncio.Task object that is passed into ``add_task``.
+        """
 
     def add_task(
         self, task: asyncio.Task[object], *, context: T_QueueContext | None = None
-    ) -> None: ...
+    ) -> None:
+        """
+        Add an asyncio.Task as a source.
+
+        In the default implementation, if the result is "extendable" then it will
+        be used as an input source rather than given to the streamer as a value
+        """
 
     def add_async_generator(
         self, agen: AsyncGenerator[object], *, context: T_QueueContext | None = None
-    ) -> None: ...
+    ) -> None:
+        """
+        Add an async generator as a source.
+
+        In the default implementation, any "extendable" result will be used as
+        an input source rather than given to the streamer as a value.
+
+        In the default implementation, every iteration will be added to the end
+        of the streamer as they happen.
+        """
 
 
 class Streamer[T_Item](Protocol):
+    """
+    This represents one of the two objects returned by ``hp.queue_manager`` and
+    is used to yield the objects that are fed into it by the feeder.
+    """
+
     @property
-    def breaker(self) -> asyncio.Event: ...
+    def breaker(self) -> asyncio.Event:
+        """
+        When this event is set, the streamer will finish
+        """
 
-    def __aiter__(self) -> AsyncGenerator[T_Item]: ...
+    def __aiter__(self) -> AsyncGenerator[T_Item]:
+        """
+        Yield the values in the streamer as they come in
+        """
 
-    def remaining(self) -> Iterator[T_Item]: ...
+    def remaining(self) -> Iterator[T_Item]:
+        """
+        Yield whatever remains in the streamer until no more values are left.
+
+        Useful if the iteration is exited early and there are items left.
+        """
 
 
 if TYPE_CHECKING:
