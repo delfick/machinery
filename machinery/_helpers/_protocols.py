@@ -113,6 +113,7 @@ class CTX[T_Tramp: Tramp = Tramp](Protocol):
         name: str,
         silent: bool = True,
         timeout: int = 10,
+        timeout_event: asyncio.Event | None = None,
         timeout_error: BaseException | None = None,
     ) -> T_Ret: ...
 

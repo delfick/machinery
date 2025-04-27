@@ -352,6 +352,7 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         name: str,
         silent: bool = True,
         timeout: int = 10,
+        timeout_event: asyncio.Event | None = None,
         timeout_error: BaseException | None = None,
     ) -> T_Ret:
         """
@@ -361,6 +362,11 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
         If timeout_error is defined, that is raised instead of asyncio.CancelledError
         on timeout.
+
+        If a ``timeout_event`` is provided, then it is set when the timeout occurs
+        if the task is  still running.
+
+        This function does not return until the task has finished cleanup.
         """
         result: asyncio.Future[T_Ret] = self.loop.create_future()
         result.add_done_callback(self.tramp.silent_reporter)
@@ -369,34 +375,46 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         task = self.async_as_background(coro, silent=silent)
 
         def pass_result(res: _protocols.FutureStatus[T_Ret]) -> None:
+            if result.done():
+                return
+
             if res.cancelled():
                 result.cancel()
                 return
 
             if (exc := res.exception()) is not None:
-                if not result.done():
-                    result.set_exception(exc)
+                result.set_exception(exc)
                 return
 
-            if res.done() and not result.done():
-                result.set_result(res.result())
+            result.set_result(res.result())
 
         task.add_done_callback(pass_result)
 
         def set_timeout() -> None:
-            if not task.done():
-                if timeout_error and not result.done():
-                    result.set_exception(timeout_error)
+            if task.done():
+                return
 
-                task.cancel()
+            if timeout_event is not None:
+                if not timeout_event.is_set():
+                    timeout_event.set()
+
+            if result.done():
+                return
+
+            if timeout_error:
+                result.set_exception(timeout_error)
+            else:
                 result.cancel()
+
+            task.cancel()
 
         handle = self.loop.call_later(timeout, set_timeout)
         try:
             return await result
         finally:
             handle.cancel()
-            task.cancel()
+            if not task.done():
+                task.cancel()
             await self.wait_for_all(task)
 
     def async_as_background[T_Ret](

@@ -1279,3 +1279,215 @@ class TestCTX:
                 )
 
             assert 1 < time.time() - now < 3
+
+        async def test_it_can_signal_when_timeout_happens_before_task_is_cleaned_up(
+            self, fake_mocked_later: thp.MockedCallLater, ctx: hp.CTX
+        ) -> None:
+            got: list[object] = []
+            done = asyncio.Event()
+
+            async def wait_forever() -> None:
+                event = asyncio.Event()
+                try:
+                    got.append((time.time(), "waiting"))
+                    await event.wait()
+                except asyncio.CancelledError:
+                    got.append((time.time(), "cancelled"))
+                    event2 = asyncio.Event()
+                    ctx.loop.call_later(2, event2.set)
+                    await event2.wait()
+                    got.append((time.time(), "done"))
+                    done.set()
+
+            timeout_event = asyncio.Event()
+
+            async with hp.task_holder(ctx=ctx) as ts:
+
+                async def wait_for_timeout() -> None:
+                    await timeout_event.wait()
+                    got.append((time.time(), "timeout_happened"))
+
+                ts.add_coroutine(wait_for_timeout())
+
+                with pytest.raises(asyncio.CancelledError):
+                    await ctx.async_with_timeout(
+                        wait_forever(),
+                        timeout=10,
+                        name="get_cancelled",
+                        timeout_event=timeout_event,
+                    )
+
+            got.append((time.time(), "finished"))
+            await done.wait()
+
+            assert got == [
+                (
+                    0,
+                    "waiting",
+                ),
+                (
+                    10,
+                    "timeout_happened",
+                ),
+                (
+                    10,
+                    "cancelled",
+                ),
+                (
+                    12,
+                    "done",
+                ),
+                (
+                    12,
+                    "finished",
+                ),
+            ]
+
+        async def test_it_allows_task_to_cleanup(
+            self, fake_mocked_later: thp.MockedCallLater, ctx: hp.CTX
+        ) -> None:
+            got: list[object] = []
+            done = asyncio.Event()
+
+            class ComputerSaysNo(Exception):
+                pass
+
+            error = ComputerSaysNo()
+
+            async def wait_forever() -> None:
+                event = asyncio.Event()
+                try:
+                    got.append((time.time(), "waiting"))
+                    await event.wait()
+                except asyncio.CancelledError:
+                    got.append((time.time(), "cancelled"))
+                    event2 = asyncio.Event()
+                    ctx.loop.call_later(2, event2.set)
+                    await event2.wait()
+                    got.append((time.time(), "done"))
+                    done.set()
+
+            timeout_event = asyncio.Event()
+
+            async with hp.task_holder(ctx=ctx) as ts:
+
+                async def wait_for_timeout() -> None:
+                    await timeout_event.wait()
+                    got.append((time.time(), "timeout_happened"))
+
+                ts.add_coroutine(wait_for_timeout())
+
+                with pytest.raises(ComputerSaysNo) as e:
+                    await ctx.async_with_timeout(
+                        wait_forever(),
+                        timeout=10,
+                        name="get_cancelled",
+                        timeout_event=timeout_event,
+                        timeout_error=error,
+                    )
+
+            assert e.value == error
+
+            got.append((time.time(), "finished"))
+            await done.wait()
+
+            assert got == [
+                (
+                    0,
+                    "waiting",
+                ),
+                (
+                    10,
+                    "timeout_happened",
+                ),
+                (
+                    10,
+                    "cancelled",
+                ),
+                (
+                    12,
+                    "done",
+                ),
+                (
+                    12,
+                    "finished",
+                ),
+            ]
+
+        async def test_it_does_not_set_timeout_event_if_coroutine_returns_before_timeout(
+            self, fake_mocked_later: thp.MockedCallLater, ctx: hp.CTX
+        ) -> None:
+            async def wait_a_couple_seconds() -> int:
+                fut: asyncio.Future[int] = ctx.loop.create_future()
+                ctx.loop.call_later(2, fut.set_result, 3)
+                return await fut
+
+            timeout_event = asyncio.Event()
+
+            assert 3 == await ctx.async_with_timeout(
+                wait_a_couple_seconds(),
+                timeout=10,
+                name="get_cancelled",
+                timeout_event=timeout_event,
+            )
+
+            assert not timeout_event.is_set()
+            assert time.time() == 2
+            await asyncio.sleep(11)
+            assert time.time() == 13
+            assert not timeout_event.is_set()
+
+        async def test_it_does_not_set_timeout_event_if_coroutine_raises_exception_before_timeout(
+            self, fake_mocked_later: thp.MockedCallLater, ctx: hp.CTX
+        ) -> None:
+            class ComputerSaysNo(Exception):
+                pass
+
+            error = ComputerSaysNo()
+
+            async def wait_a_couple_seconds() -> int:
+                fut: asyncio.Future[int] = ctx.loop.create_future()
+                ctx.loop.call_later(2, fut.set_exception, error)
+                return await fut
+
+            timeout_event = asyncio.Event()
+
+            with pytest.raises(ComputerSaysNo) as e:
+                await ctx.async_with_timeout(
+                    wait_a_couple_seconds(),
+                    timeout=10,
+                    name="get_cancelled",
+                    timeout_event=timeout_event,
+                )
+
+            assert e.value == error
+
+            assert not timeout_event.is_set()
+            assert time.time() == 2
+            await asyncio.sleep(11)
+            assert time.time() == 13
+            assert not timeout_event.is_set()
+
+        async def test_it_does_not_set_timeout_event_if_coroutine_cancels_itself_before_timeout(
+            self, fake_mocked_later: thp.MockedCallLater, ctx: hp.CTX
+        ) -> None:
+            async def wait_a_couple_seconds() -> int:
+                fut: asyncio.Future[int] = ctx.loop.create_future()
+                ctx.loop.call_later(2, fut.cancel)
+                return await fut
+
+            timeout_event = asyncio.Event()
+
+            with pytest.raises(asyncio.CancelledError):
+                await ctx.async_with_timeout(
+                    wait_a_couple_seconds(),
+                    timeout=10,
+                    name="get_cancelled",
+                    timeout_event=timeout_event,
+                )
+
+            assert not timeout_event.is_set()
+            assert time.time() == 2
+            await asyncio.sleep(11)
+            assert time.time() == 13
+            assert not timeout_event.is_set()
