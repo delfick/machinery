@@ -225,11 +225,6 @@ class _Queue[T_Item, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
             else:
                 yield nxt
 
-    def add_done_callback(
-        self, cb: Callable[[_protocols.FutureStatus[None]], None]
-    ) -> _protocols.FutureCallback[None]:
-        return self._ctx.add_done_callback(cb)
-
 
 @overload
 def _queue(

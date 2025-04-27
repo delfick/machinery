@@ -533,10 +533,6 @@ class LimitedQueue[T_Item = object](Protocol):
 
     def append(self, item: T_Item, *, priority: bool = False) -> None: ...
 
-    def add_done_callback(
-        self, cb: Callable[[FutureStatus[None]], None]
-    ) -> FutureCallback[None]: ...
-
 
 class QueueItemDef[T_Item](Protocol):
     def __call__(self, o: object) -> T_Item: ...

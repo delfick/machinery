@@ -91,7 +91,6 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
     )
 
     def __post_init__(self) -> None:
-        self._queue.add_done_callback(self._on_queue_stopped)
         self._queue.process_after_yielded(self._process_queue_after_yielded)
 
     def set_as_finished_if_out_of_sources(self) -> None:
@@ -372,7 +371,7 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
         self._queue.append_instruction(get_next_instruction)
         self._clear_sources()
 
-    def _on_queue_stopped(self, res: _protocols.FutureStatus[None]) -> None:
+    def on_queue_stopped(self, res: _protocols.FutureStatus[None]) -> None:
         exc: BaseException | None
         if res.cancelled():
             exc = asyncio.CancelledError()
@@ -411,10 +410,13 @@ async def queue_manager[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.T
         _protocols.QueueFeeder[T_QueueContext],
     ]
 ]:
-    with ctx.child(name=f"{name}queue_manager", prefix=name) as ctx_queue_manager:
+    with (
+        ctx.child(name=f"{name}queue_manager", prefix=name) as ctx_queue_manager,
+        ctx_queue_manager.child(name="streamer") as ctx_streamer,
+    ):
         async with _task_holder.task_holder(ctx=ctx_queue_manager) as task_holder:
             with _queue.queue(
-                ctx=ctx_queue_manager,
+                ctx=ctx_streamer,
                 empty_on_finished=True,
                 item_ensurer=_queue.EnsureItemGetter[QueueManagerResult[T_QueueContext]].get(),
             ) as streamer:
@@ -427,4 +429,5 @@ async def queue_manager[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.T
                         _queue=streamer,
                         _make_empty_context=make_empty_context,
                     )
+                    ctx_streamer.add_done_callback(feeder.on_queue_stopped)
                     yield streamer, feeder
