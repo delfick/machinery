@@ -5,6 +5,9 @@ This is a collection of functionality.
 
 Docs found at https://machinery.readthedocs.io
 
+.. image:: https://img.shields.io/pypi/v/PACKAGE?label=machinery_collection
+   :target: https://pypi.org/project/machinery-collection/
+
 History
 -------
 
