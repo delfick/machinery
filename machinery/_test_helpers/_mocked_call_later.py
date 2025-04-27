@@ -56,7 +56,7 @@ class _MockedCallLater:
         return self._time
 
     async def add(self, amount: float) -> None:
-        await self._run(iterations=round(amount / 0.1))
+        await self._run(iterations=round(amount / self._precision))
 
     async def _main_loop(self) -> None:
         await self.have_call_later.wait()
