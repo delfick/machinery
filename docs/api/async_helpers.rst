@@ -19,6 +19,20 @@ being completed.
 .. autoprotocol:: machinery.helpers.protocols.CTX
     :member-order: bysource
 
+The ticker
+----------
+
+.. autoprotocol:: machinery.helpers.protocols.Ticker
+
+.. autofunction:: machinery.helpers.tick
+
+Task holder
+-----------
+
+.. autoprotocol:: machinery.helpers.protocols.TaskHolder
+
+.. autofunction:: machinery.helpers.task_holder
+
 Odd helpers
 -----------
 
