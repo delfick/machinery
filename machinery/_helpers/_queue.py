@@ -125,11 +125,22 @@ class _SyncQueue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class _Instruction:
+    """
+    Represents a callable that should be called when found during the iteration
+    of the queue.
+
+    These are created by calling ``append_instruction`` on the queue.
+    """
+
     cb: Callable[[], None]
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class _Queue[T_Item, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
+    """
+    An object that can asynchronously iterate values that are added to the queue.
+    """
+
     _ctx: _protocols.CTX[T_Tramp]
     _empty_on_finished: bool = False
 
@@ -145,17 +156,37 @@ class _Queue[T_Item, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     breaker: asyncio.Event = dataclasses.field(default_factory=asyncio.Event, init=False)
 
     def is_empty(self) -> bool:
-        return len(self._collection) == 0
+        """
+        Return True if the queue is currently empty
+        """
+        return len(self) == 0
 
     def __len__(self) -> int:
+        """
+        Return the number of items left in the queue
+        """
         return len(self._collection)
 
     def process_after_yielded(
         self, process: Callable[["_protocols.LimitedQueue[T_Item]"], None], /
     ) -> None:
+        """
+        Register a callable that is provided the queue after a value is yielded
+        from the queue.
+
+        The object provided is typed as having a small API surface than the queue
+        itself.
+        """
         self._after_yielded.append(process)
 
     def append_instruction(self, cb: Callable[[], None], *, priority: bool = False) -> None:
+        """
+        Append a callable to the queue, such that when the callable is taken off
+        the queue, it is called instead of yielded.
+
+        If ``priority`` is True, then the callable is added to the front of the
+        queue.
+        """
         if priority:
             self._collection.insert(0, _Instruction(cb=cb))
         else:
@@ -163,6 +194,16 @@ class _Queue[T_Item, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         self._waiter.set()
 
     def append(self, item: T_Item, *, priority: bool = False) -> None:
+        """
+        Append an item to the queue.
+
+        The ``item_ensurer`` on the class is used to ensure that the item provided
+        is of type ``T_Item``. Note that if that object comes from ``EnsureItemGetter``
+        then it is not called and the item is assumed to be the correct type.
+
+        If ``priority`` is True, then the callable is added to the front of the
+        queue.
+        """
         if self._item_ensurer is not _ensure_item:
             item = self._item_ensurer(item)
 
@@ -173,9 +214,28 @@ class _Queue[T_Item, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         self._waiter.set()
 
     def __aiter__(self) -> AsyncGenerator[T_Item]:
+        """
+        Yield all the items in the queue as they come in.
+
+        Do not exit until the context is finished, or ``breaker`` is set.
+
+        If this is exited early, it is re-entrant.
+        """
         return self.get_all()
 
     async def get_all(self) -> AsyncGenerator[T_Item]:
+        """
+        Yield all the items in the queue as they come in.
+
+        This is the logic used by ``__aiter__``.
+
+        Do not exit until the context is complete, or ``breaker`` is set.
+
+        If the context is complete or breaker is set, then we will also yield
+        what is left in the queue if ``empty_on_finished`` is True.
+
+        If this is exited early, it is re-entrant.
+        """
         self.breaker.clear()
 
         if not self._collection:
@@ -205,6 +265,9 @@ class _Queue[T_Item, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
                     process(self)
 
     def remaining(self) -> Iterator[T_Item]:
+        """
+        Iterate all remaining items in the queue until none are left.
+        """
         while self._collection:
             nxt = self._collection.popleft()
             if isinstance(nxt, _Instruction):
@@ -241,7 +304,7 @@ def _queue[T_Item](
     item_ensurer: _protocols.QueueItemDef[T_Item] | None = None,
 ) -> Iterator[_protocols.Queue[T_Item]] | Iterator[_protocols.Queue[object]]:
     """
-    A custom async queue class.
+    Returns an object that can asynchronously yield the values it gets given.
 
     Usage is:
 
@@ -264,7 +327,8 @@ def _queue[T_Item](
             queue.append(another)
 
     Note that the main difference between this and the standard library
-    asyncio.Queue is that this one does not have the ability to impose limits.
+    asyncio.Queue other than a slighly different API surface, is that this one
+    does not have the ability to impose limits.
     """
     with ctx.child(name=f"{name}queue", prefix=name) as ctx_queue:
         if item_ensurer is None:

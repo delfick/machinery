@@ -524,6 +524,15 @@ class SyncQueue[T_Item = object](Protocol):
 
 
 class LimitedQueue[T_Item = object](Protocol):
+    """
+    A limited Protocol for a machinery Queue that cannot be iterated.
+
+    This is provided to callbacks the queue knows about that get called
+    after a value is yielded.
+
+    The methods are the same as those that overlap with Queue.
+    """
+
     @property
     def breaker(self) -> asyncio.Event: ...
 
@@ -535,35 +544,85 @@ class LimitedQueue[T_Item = object](Protocol):
 
 
 class QueueItemDef[T_Item](Protocol):
+    """
+    A callable that given some object will return something of type ``T_Item``.
+
+    These objects are used to ensure that a Queue does yield values of ``T_Item``
+    """
+
     def __call__(self, o: object) -> T_Item: ...
 
 
 class Queue[T_Item = object](Protocol):
-    @property
-    def breaker(self) -> asyncio.Event: ...
-
-    def is_empty(self) -> bool: ...
-
-    def __len__(self) -> int: ...
-
-    def process_after_yielded(
-        self, process: Callable[[LimitedQueue[T_Item]], None], /
-    ) -> None: ...
-
-    def append(self, item: T_Item, *, priority: bool = False) -> None: ...
-
-    def append_instruction(self, cb: Callable[[], None], *, priority: bool = False) -> None: ...
-
-    def __aiter__(self) -> AsyncGenerator[T_Item]: ...
+    """
+    These objects represent an asynchronous queue of values.
+    """
 
     @property
-    def get_all(self) -> Callable[[], AsyncGenerator[T_Item]]: ...
+    def breaker(self) -> asyncio.Event:
+        """
+        When this is set, the iteration will exit.
 
-    def remaining(self) -> Iterator[T_Item]: ...
+        The default implementation will always clear this when iteration is
+        restarted.
+        """
 
-    def add_done_callback(
-        self, cb: Callable[[FutureStatus[None]], None]
-    ) -> FutureCallback[None]: ...
+    def is_empty(self) -> bool:
+        """
+        Return True if there are no items left in the queue
+        """
+
+    def __len__(self) -> int:
+        """
+        Return the number of items left in the queue.
+        """
+
+    def process_after_yielded(self, process: Callable[[LimitedQueue[T_Item]], None], /) -> None:
+        """
+        Register a callback to be called whenever a value has been yielded.
+
+        The callback will be provided the queue itself and is typed to only
+        accept a limited API for that queue.
+        """
+
+    def append(self, item: T_Item, *, priority: bool = False) -> None:
+        """
+        Add an object to the end of the queue.
+
+        If ``priority`` is set to True, then the item is added to the front of
+        the queue.
+        """
+
+    def append_instruction(self, cb: Callable[[], None], *, priority: bool = False) -> None:
+        """
+        Add a callable to the end of the queue.
+
+        If ``priority`` is set to True, then the callable is added to the front of
+        the queue.
+
+        When the queue gets to these callables, the callable is returned and
+        nothing is directly yielded as a result.
+        """
+
+    def __aiter__(self) -> AsyncGenerator[T_Item]:
+        """
+        Asynchronously yield the values in the queue as they are added
+        """
+
+    @property
+    def get_all(self) -> Callable[[], AsyncGenerator[T_Item]]:
+        """
+        Return an async generator that yields all the values in the queue
+        as they are added.
+        """
+
+    def remaining(self) -> Iterator[T_Item]:
+        """
+        Yield all the remaining values in the queue. This is useful when the queue
+        is stopped but there are still values left.
+
+        This will not wait for another value when it runs out of values to yield.
+        """
 
 
 class QueueFeeder[T_QueueContext](Protocol):
