@@ -70,6 +70,21 @@ class Tramp(Protocol):
     In python, asyncio.Future objects don't have names and when you have a large
     program with lots of futures hanging around, it becomes very useful to be
     able to name them to understand what they are actually representing.
+
+    The default implementation is provided by :class:`machinery.helpers.Tramp`
+    and this can be subclasses to add more methods.
+
+    Note that if you want to use these other methods, then you'll need your ``ctx``
+    to be typed as ``hp.protocols.CTX[MyCustomTramp]``.
+
+    It is recommended in your program to have an alias to refer to so that it's
+    easy to change the default at a later stage:
+
+    .. code-block:: python
+
+        from machinery import helpers as hp
+
+        type CTX[T_Tramp: MyCustomTramp = MyCustomTramp] = hp.protocols.CTX[T_Tramp]
     """
 
     def set_future_name(self, fut: asyncio.Future[Any], *, name: str) -> None:
@@ -164,13 +179,20 @@ class CTX[T_Tramp: Tramp = Tramp](Protocol):
 
     .. code-block:: python
 
-        ctx: hp.CTX = ...
+        from machinery import helpers as hp
 
+        async def my_program() -> None:
+            # The first context is created with ``hp.CTX.beginning()``
+            # After this all contexts should be created using ``ctx.child``
 
-        with ctx.child(name="SomeObject") as ctx_some_object:
-            some_object = SomeObject(ctx=ctx_some_object)
-            # some_object should never itself call ``self.ctx.cancel()``
-            ...
+            with ctx.child(name="SomeObject") as ctx_some_object:
+                some_object = SomeObject(ctx=ctx_some_object)
+                # some_object should never itself call ``self.ctx.cancel()``
+
+                with ctx_some_object.child(name=...) as ctx_grandchild:
+                    ...
+
+                ...
 
     Objects that intend to finish should have a mechanism for signalling to itself
     it is done, rather than rely on cancelling the context. Stopping based off

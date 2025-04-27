@@ -1,7 +1,10 @@
+.. include:: ../README.rst
+
+Contents
+--------
+
 .. toctree::
-   :hidden:
    :maxdepth: 2
 
+   api/async_helpers
    api/changelog
-
-.. include:: ../README.rst
