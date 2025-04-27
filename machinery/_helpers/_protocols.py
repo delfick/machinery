@@ -442,6 +442,15 @@ class TaskHolder(Protocol):
         """
 
 
+class Ticker(Protocol):
+    @property
+    def pauser(self) -> asyncio.Semaphore | None: ...
+
+    def __aiter__(self) -> AsyncGenerator[tuple[int, float]]: ...
+
+    def change_after(self, every: int, *, set_new_every: bool = True) -> None: ...
+
+
 class SyncQueue[T_Item = object](Protocol):
     def is_empty(self) -> bool: ...
 
@@ -539,15 +548,6 @@ class Streamer[T_Item](Protocol):
     def __aiter__(self) -> AsyncGenerator[T_Item]: ...
 
     def remaining(self) -> Iterator[T_Item]: ...
-
-
-class Ticker(Protocol):
-    @property
-    def pauser(self) -> asyncio.Semaphore | None: ...
-
-    def __aiter__(self) -> AsyncGenerator[tuple[int, float]]: ...
-
-    def change_after(self, every: int, *, set_new_every: bool = True) -> None: ...
 
 
 if TYPE_CHECKING:
