@@ -37,13 +37,7 @@ class MockedCallLater(Protocol):
     @property
     def called_times(self) -> list[float]: ...
 
-    def add_time(self, t: float) -> None: ...
-
-    def set_time(self, t: float) -> None: ...
-
     async def add(self, amount: float) -> None: ...
-
-    async def resume_after(self, amount: float) -> None: ...
 
 
 @dataclasses.dataclass
@@ -61,19 +55,8 @@ class _MockedCallLater:
     def time(self) -> float:
         return self._time
 
-    def add_time(self, t: float) -> None:
-        self._time = round(self._time + t, 3)
-
-    def set_time(self, t: float) -> None:
-        self._time = t
-
     async def add(self, amount: float) -> None:
         await self._run(iterations=round(amount / 0.1))
-
-    async def resume_after(self, amount: float) -> None:
-        event = asyncio.Event()
-        self._ctx.loop.call_later(amount, event.set)
-        await event.wait()
 
     async def run(self) -> None:
         await self.have_call_later.wait()
@@ -150,10 +133,10 @@ class _MockedCallLater:
             self.funcs = remaining
 
             if iterations >= 1 and iteration > 0:
-                self.add_time(self._precision)
+                self._time = round(self._time + self._precision, 3)
 
         if not executed and iterations == 0:
-            self.add_time(self._precision)
+            self._time = round(self._time + self._precision, 3)
 
         return executed
 
