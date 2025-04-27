@@ -64,6 +64,25 @@ class _TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         self._ts.append(task)
         return task
 
+    @property
+    def pending(self) -> int:
+        """
+        Return the number of tasks held onto by this holder that are not done.
+        """
+        return sum(1 for t in self._ts if not t.done())
+
+    def __contains__(self, task: asyncio.Task[object]) -> bool:
+        """
+        Return whether we are holding onto this task
+        """
+        return task in self._ts
+
+    def __iter__(self) -> Iterator[_protocols.WaitByCallback[object]]:
+        """
+        Yield the tasks currently held onto by this holder
+        """
+        return iter(self._ts)
+
     def _set_cleaner_waiter(self, res: _protocols.FutureStatus[object]) -> None:
         """
         A done callback to set the cleaner waiter that has a return annotation
@@ -118,25 +137,6 @@ class _TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
                 await self._ctx.wait_for_all(*self._cleaner)
 
             await self._perform_clean()
-
-    @property
-    def pending(self) -> int:
-        """
-        Return the number of tasks held onto by this holder that are not done.
-        """
-        return sum(1 for t in self._ts if not t.done())
-
-    def __contains__(self, task: asyncio.Task[object]) -> bool:
-        """
-        Return whether we are holding onto this task
-        """
-        return task in self._ts
-
-    def __iter__(self) -> Iterator[_protocols.WaitByCallback[object]]:
-        """
-        Yield the tasks currently held onto by this holder
-        """
-        return iter(self._ts)
 
     async def _cleaner_task(self) -> None:
         """
