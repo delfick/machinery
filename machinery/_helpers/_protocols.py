@@ -384,18 +384,62 @@ class CTX[T_Tramp: Tramp = Tramp](Protocol):
 
 
 class TaskHolder(Protocol):
+    """
+    An object that can be used to create asyncio.Task objects and ensure that
+    they are cleaned up correctly without causing asyncio to complain about tasks
+    that are never awaited.
+
+    The default implementation is provided by using ``hp.task_holder``:
+
+    .. code-block:: python
+
+        from machinery import helpers as hp
+
+        ctx: hp.CTX = ...
+
+        async with hp.task_holder(ctx=ctx) as ts:
+            task = ts.add_coroutine(some_async_function())
+
+    When the context manager is exited then tasks will not be cancelled unless
+    the parent ``ctx`` has been cancelled. During this time, more tasks may be
+    added to the task holder.
+
+    Once the parent ``ctx`` has been cancelled, then all the tasks that are
+    held will be cancelled and awaited.
+    """
+
     def add_coroutine[T_Ret](
         self, coro: Coroutine[object, object, T_Ret], *, silent: bool = False
-    ) -> asyncio.Task[T_Ret]: ...
+    ) -> asyncio.Task[T_Ret]:
+        """
+        Create a task from this coroutine and ensure that it gets cleaned up
+        eventually.
 
-    def add_task[T_Ret](self, task: asyncio.Task[T_Ret]) -> asyncio.Task[T_Ret]: ...
+        The silent argument should be used to say whether exceptions from this
+        coroutine should be logged or not.
+        """
+
+    def add_task[T_Ret](self, task: asyncio.Task[T_Ret]) -> asyncio.Task[T_Ret]:
+        """
+        Track this asyncio.Task object and ensure it is cleaned up correctly
+        eventually.
+        """
 
     @property
-    def pending(self) -> int: ...
+    def pending(self) -> int:
+        """
+        Return the number of pending tasks that are held by this object.
+        """
 
-    def __contains__(self, task: asyncio.Task[object]) -> bool: ...
+    def __contains__(self, task: asyncio.Task[object]) -> bool:
+        """
+        Return whether this holds onto the provided task.
+        """
 
-    def __iter__(self) -> Iterator[WaitByCallback[object]]: ...
+    def __iter__(self) -> Iterator[WaitByCallback[object]]:
+        """
+        Yield all the tasks currently held by this object.
+        """
 
 
 class SyncQueue[T_Item = object](Protocol):

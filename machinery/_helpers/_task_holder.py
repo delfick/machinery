@@ -10,13 +10,19 @@ from . import _async_mixin, _protocols
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class _TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
+    """
+    Used to create and hold onto asyncio.Task objects to ensure they are
+    cleaned up correctly to avoid asyncio complaining about task objects that
+    are not awaited before the program ends.
+    """
+
     async def __aexit__(
         self,
-        exc_type: type[BaseException] | None = None,
-        exc: BaseException | None = None,
-        tb: types.TracebackType | None = None,
+        exc_type: type[BaseException] | None,
+        value: BaseException | None,
+        tb: types.TracebackType | None,
     ) -> None:
-        return await self._finish(exc_type, exc, tb)
+        return await self._finish(exc_type, value, tb)
 
     async def __aenter__(self) -> Self:
         async with _async_mixin.ensure_aexit(self):
@@ -33,12 +39,27 @@ class _TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     def add_coroutine[T_Ret](
         self, coro: Coroutine[object, object, T_Ret], *, silent: bool = False
     ) -> asyncio.Task[T_Ret]:
+        """
+        Create a task from the provided coroutine and register it.
+        """
         return self.add_task(self._ctx.async_as_background(coro, silent=silent))
 
     def _set_cleaner_waiter(self, res: _protocols.FutureStatus[object]) -> None:
+        """
+        A done callback to set the cleaner waiter that has a return annotation
+        that aligns with task.add_done_callback
+        """
         self._cleaner_waiter.set()
 
     def add_task[T_Ret](self, task: asyncio.Task[T_Ret]) -> asyncio.Task[T_Ret]:
+        """
+        Hold onto a task.
+
+        We set an internal event when the task is done to ensure that we cleanup
+        tasks as tasks are completed. This allows the task holder to be long
+        lived and not hold onto ever task that it ends up knowing about and
+        create an effective memory leak.
+        """
         if not self._cleaner:
             t = self._ctx.async_as_background(self._cleaner_task())
             self._cleaner.append(t)
@@ -54,16 +75,28 @@ class _TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         return task
 
     async def _start(self) -> Self:
+        """
+        Nothing to do when entering the async context manager for this object
+        """
         return self
 
     async def _finish(
         self,
         exc_typ: type[BaseException] | None = None,
-        exc: BaseException | None = None,
+        value: BaseException | None = None,
         tb: types.TracebackType | None = None,
     ) -> None:
-        if exc and not self._ctx.done():
-            self._ctx.set_exception(exc)
+        """
+        When leaving the async context manager for this object, wait for all
+        tasks to complete.
+
+        If we leave the context manager with an exception or our ctx is done, then
+        cancel all the tasks.
+
+        Whilst this runs, we can still add more tasks to the holder.
+        """
+        if value and not self._ctx.done():
+            self._ctx.set_exception(value)
 
         try:
             while any(not t.done() for t in self._ts):
@@ -87,12 +120,21 @@ class _TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
     @property
     def pending(self) -> int:
+        """
+        Return the number of tasks held onto by this holder that are not done.
+        """
         return sum(1 for t in self._ts if not t.done())
 
     def __contains__(self, task: asyncio.Task[object]) -> bool:
+        """
+        Return whether we are holding onto this task
+        """
         return task in self._ts
 
     def __iter__(self) -> Iterator[_protocols.WaitByCallback[object]]:
+        """
+        Yield the tasks currently held onto by this holder
+        """
         return iter(self._ts)
 
     async def _cleaner_task(self) -> None:
@@ -102,6 +144,12 @@ class _TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
             await self._perform_clean()
 
     async def _perform_clean(self) -> None:
+        """
+        Cleanup any tasks this holder knows of that are now complete.
+
+        This allows us to ensure that we don't hold onto tasks indefinitely
+        if the task holder is long lived
+        """
         destroyed = []
         remaining = []
         for t in self._ts:
@@ -168,10 +216,11 @@ async def task_holder(
     then the tasks will be cancelled and properly waited on so their finally
     blocks run before the context manager finishes.
 
-    ``ts.add`` will also return the task object that is made from the coroutine.
+    ``ts.add_coroutine`` will also return the task object that is made from the
+    coroutine.
 
-    ``ts.add`` also takes a ``silent=False`` parameter, that when True will
-    not log any errors that happen. Otherwise errors will be logged.
+    ``ts.add_coroutine`` also takes a ``silent=False`` parameter, that when True
+    will not log any errors that happen. Otherwise errors will be logged.
 
     If you already have a task object, you can give it to the holder with
     ``ts.add_task(my_task)``.
