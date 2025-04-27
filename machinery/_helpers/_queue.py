@@ -130,9 +130,6 @@ class _Instruction:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class _Queue[T_Item, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
-    class Done:
-        pass
-
     _ctx: _protocols.CTX[T_Tramp]
     _empty_on_finished: bool = False
 
@@ -194,14 +191,10 @@ class _Queue[T_Item, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
                 break
 
             if not self._collection:
+                self._waiter.clear()
                 continue
 
             nxt = self._collection.popleft()
-            if nxt is self.Done:
-                break
-
-            if not self._collection:
-                self._waiter.clear()
 
             if isinstance(nxt, _Instruction):
                 nxt.cb()
