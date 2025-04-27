@@ -304,6 +304,17 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         if not waits:
             return
 
+        all_events_done = all(isinstance(wait, asyncio.Event) and wait.is_set() for wait in waits)
+        all_futures_done = all(
+            not isinstance(wait, asyncio.Event) and wait.done() for wait in waits
+        )
+
+        waiter = asyncio.Event()
+
+        if all_events_done and all_futures_done:
+            await asyncio.sleep(0)
+            return
+
         futs: list[_protocols.WaitByCallback[Any]] = []
         tasks: list[asyncio.Task[Literal[True]]] = []
         for wait in waits:
@@ -315,13 +326,6 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
                 futs.append(wait)
 
         unique = list({id(fut): fut for fut in futs}.values())
-
-        waiter = asyncio.Event()
-
-        if all(fut.done() for fut in unique):
-            await asyncio.sleep(0)
-            return
-
         complete: dict[int, bool] = {}
 
         def done(res: object) -> None:
