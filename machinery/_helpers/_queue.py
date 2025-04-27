@@ -147,12 +147,6 @@ class _Queue[T_Item, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
     breaker: asyncio.Event = dataclasses.field(default_factory=asyncio.Event, init=False)
 
-    def __post_init__(self) -> None:
-        self._ctx.add_done_callback(self._stop_waiter)
-
-    def _stop_waiter(self, res: _protocols.FutureStatus[None]) -> None:
-        self._waiter.set()
-
     def is_empty(self) -> bool:
         return len(self._collection) == 0
 

@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from collections import deque
 from collections.abc import Iterator
 from queue import Queue as NormalQueue
 
@@ -21,38 +20,6 @@ def ctx() -> Iterator[hp.CTX]:
 
 
 class TestQueue:
-    def test_takes_in_a_ctx(self, ctx: hp.CTX) -> None:
-        with hp.queue(ctx=ctx) as queue:
-            assert isinstance(queue, _queue._Queue)
-
-            assert queue._ctx.has_direct_done_callback(queue._stop_waiter)
-
-            assert isinstance(queue._collection, deque)
-
-            assert not queue._waiter.is_set()
-
-    async def test_can_stop_the_waiter_on_done(self, ctx: hp.CTX) -> None:
-        with hp.queue(ctx=ctx) as queue:
-            assert isinstance(queue, _queue._Queue)
-
-            assert not queue._waiter.is_set()
-
-            ctx.cancel()
-            await asyncio.sleep(0.001)
-
-            assert queue._waiter.is_set()
-
-        # And if the waiter was already done
-        with hp.queue(ctx=ctx) as queue:
-            assert isinstance(queue, _queue._Queue)
-
-            queue._waiter.set()
-
-            ctx.cancel()
-            await asyncio.sleep(0.001)
-
-            assert queue._waiter.is_set()
-
     async def test_can_get_remaining_items(self, ctx: hp.CTX) -> None:
         with hp.queue(ctx=ctx) as queue:
             assert isinstance(queue, _queue._Queue)
