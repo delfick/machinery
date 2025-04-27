@@ -58,7 +58,7 @@ class _MockedCallLater:
     async def add(self, amount: float) -> None:
         await self._run(iterations=round(amount / 0.1))
 
-    async def run(self) -> None:
+    async def _main_loop(self) -> None:
         await self.have_call_later.wait()
 
         while True:
@@ -68,7 +68,7 @@ class _MockedCallLater:
             if not self.funcs:
                 self.have_call_later.clear()
 
-    def call_later[*T_Args, T_Ret](
+    def _fake_call_later[*T_Args, T_Ret](
         self, when: float, func: Callable[[Unpack[T_Args]], T_Ret], *args: *T_Args
     ) -> Cancellable:
         fr = inspect.currentframe()
@@ -161,10 +161,10 @@ async def mocked_call_later(
 
         with (
             mock.patch("time.time", instance.time),
-            mock.patch.object(ctx.loop, "call_later", instance.call_later),
+            mock.patch.object(ctx.loop, "call_later", instance._fake_call_later),
         ):
             with ctx_mocked.child(name="task_holder") as ctx_task_holder:
                 async with hp.task_holder(ctx=ctx_task_holder) as task_holder:
-                    task_holder.add_coroutine(instance.run())
+                    task_holder.add_coroutine(instance._main_loop())
                     yield instance
                     ctx_task_holder.cancel()
