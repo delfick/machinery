@@ -443,12 +443,38 @@ class TaskHolder(Protocol):
 
 
 class Ticker(Protocol):
+    """
+    An object that yields on a specific tick schedule.
+
+    The default implementation is found via ``hp.tick``.
+    """
+
     @property
-    def pauser(self) -> asyncio.Semaphore | None: ...
+    def pauser(self) -> asyncio.Semaphore | None:
+        """
+        Pause the ticking whilst this pauser is locked.
+        """
 
-    def __aiter__(self) -> AsyncGenerator[tuple[int, float]]: ...
+    def __aiter__(self) -> AsyncGenerator[tuple[int, float]]:
+        """
+        Yield according to the tick schedule.
 
-    def change_after(self, every: int, *, set_new_every: bool = True) -> None: ...
+        Each value yielded should be a tuple of ``(iteration, time_till_next)``
+        where ``iteration`` is a counter of how many times we yield a value
+        starting from 1 and the ``time_till_next`` is the number of seconds till
+        the next time we yield a value.
+        """
+
+    def change_after(self, every: int, *, set_new_every: bool = True) -> None:
+        """
+        Change the tick schedule.
+
+        For example `change_after(20)` will mean the next tick is 20 seconds
+        after whenever the last tick was.
+
+        Setting ``set_new_every=False`` will mean this is a once only change
+        in the schedule, otherwise this new ``every`` will become the new schedule.
+        """
 
 
 class SyncQueue[T_Item = object](Protocol):

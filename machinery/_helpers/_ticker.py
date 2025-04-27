@@ -26,6 +26,11 @@ class _TickerSchedule:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class _TickerOptions[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
+    """
+    Represents the logic held by the ticker. It is used by the ``tick`` function
+    below to implement the desired behaviour.
+    """
+
     ctx: _protocols.CTX[T_Tramp]
     schedule: _TickerSchedule
     max_time_reached: _protocols.WaitByCallback[None]
@@ -38,6 +43,11 @@ class _TickerOptions[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     waiter: asyncio.Event = dataclasses.field(default_factory=asyncio.Event)
 
     def change_after(self, every: int, *, set_new_every: bool = True) -> None:
+        """
+        Used to change the schedule for the ticker.
+
+        If ``set_new_every`` is False, then this new schedule is once only.
+        """
         old_every = self.schedule.every
         if set_new_every:
             self.schedule.every = every
@@ -60,6 +70,10 @@ class _TickerOptions[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
             self._change_handle(self.ctx.loop.call_later(diff, self.waiter.set))
 
     async def tick(self) -> AsyncGenerator[tuple[int, float]]:
+        """
+        The main loop for the ticker. It will yield as per the schedule and take
+        into account when the schedule changes.
+        """
         start = time.time()
         iteration = 0
         self.schedule.expected = start
@@ -84,6 +98,8 @@ class _TickerOptions[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
             if self.max_time is not None and now - start >= self.max_time:
                 return
 
+            # We do some mildly complicated magic to work out how long to wait
+            # for the next time we yield some values
             if self.min_wait is False:
                 diff = self.schedule.expected - now
                 if diff == 0:
@@ -106,6 +122,9 @@ class _TickerOptions[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
             if diff == 0:
                 diff = self.schedule.expected - now
 
+            # We ensure we only ever have the latest waiter setter at a time
+            # This allows us to the change the schedule and not be Interrupted
+            # By the old schedule
             self._change_handle(self.ctx.loop.call_later(diff, self.waiter.set))
 
             if self.min_wait is not False or diff > 0:
@@ -113,11 +132,20 @@ class _TickerOptions[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
                 yield iteration, max([diff, 0])
 
     def _change_handle(self, handle: asyncio.Handle | None = None) -> None:
+        """
+        Used to ensure we only have one callback to call to wake up the tick.
+        """
         if self.schedule.handle:
             self.schedule.handle.cancel()
         self.schedule.handle = handle
 
     async def _wait_for_next(self) -> None:
+        """
+        Used to wake up the tick the next time it should
+
+        This takes into account the pauser semaphore and ensures that it is unlocked
+        when we wake up next.
+        """
         pauser = self.pauser
 
         if pauser is not None and pauser.locked():
@@ -138,17 +166,31 @@ class _TickerOptions[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class _Ticker[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
+    """
+    Object used to represent the Ticker protocol that is yielded from the
+    tick helper below.
+    """
+
     _options: _TickerOptions[T_Tramp]
     _gen: AsyncGenerator[tuple[int, float]]
 
     @property
     def pauser(self) -> asyncio.Semaphore | None:
+        """
+        The semaphore that lets the user pause the tick.
+        """
         return self._options.pauser
 
     def __aiter__(self) -> AsyncGenerator[tuple[int, float]]:
+        """
+        The async generator that yields values at the desired schedule.
+        """
         return self._gen
 
     def change_after(self, every: int, *, set_new_every: bool = True) -> None:
+        """
+        Used to change the schedule.
+        """
         self._options.change_after(every, set_new_every=set_new_every)
 
 
@@ -245,6 +287,11 @@ async def tick[T_Tramp: _protocols.Tramp = _protocols.Tramp](
         max_time_reached = ctx.loop.create_future()
         ctx.tramp.set_future_name(max_time_reached, name=f"{ctx_ticker.name}::[max_time_reached]")
 
+        def ensure_max_time_cancelled(res: _protocols.FutureStatus[None]) -> None:
+            max_time_reached.cancel()
+
+        ctx_ticker.add_done_callback(ensure_max_time_cancelled)
+
         if max_time:
             ctx.loop.call_later(max_time, max_time_reached.cancel)
 
@@ -262,10 +309,9 @@ async def tick[T_Tramp: _protocols.Tramp = _protocols.Tramp](
         try:
             yield _Ticker(_options=options, _gen=gen)
         finally:
+            # Make sure the ticker is cleaned up
             exc_info = sys.exc_info()
             try:
                 await _futures.stop_async_generator(gen, exc=exc_info[1] or _Stop())
             except _Stop:
                 pass
-            finally:
-                max_time_reached.cancel()
