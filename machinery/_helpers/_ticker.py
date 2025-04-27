@@ -57,14 +57,15 @@ class _TickerOptions[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         if diff <= 0:
             self.waiter.set()
         else:
-            self._change_handle(self.ctx.loop.call_later(diff, self._waited))
+            self._change_handle(self.ctx.loop.call_later(diff, self.waiter.set))
 
     async def tick(self) -> AsyncGenerator[tuple[int, float]]:
         start = time.time()
         iteration = 0
         self.schedule.expected = start
 
-        self._waited()
+        # We yield before the first schedule
+        self.waiter.set()
 
         while True:
             await self._wait_for_next()
@@ -105,7 +106,7 @@ class _TickerOptions[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
             if diff == 0:
                 diff = self.schedule.expected - now
 
-            self._change_handle(self.ctx.loop.call_later(diff, self._waited))
+            self._change_handle(self.ctx.loop.call_later(diff, self.waiter.set))
 
             if self.min_wait is not False or diff > 0:
                 iteration += 1
@@ -115,9 +116,6 @@ class _TickerOptions[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         if self.schedule.handle:
             self.schedule.handle.cancel()
         self.schedule.handle = handle
-
-    def _waited(self) -> None:
-        self.waiter.set()
 
     async def _wait_for_next(self) -> None:
         pauser = self.pauser
