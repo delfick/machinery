@@ -460,8 +460,6 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
                 await fut
                 return
 
-    __iter__ = __await__
-
 
 if TYPE_CHECKING:
     _T: _protocols.Tramp = cast(Tramp, None)
