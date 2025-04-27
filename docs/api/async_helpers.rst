@@ -33,6 +33,19 @@ Task holder
 
 .. autofunction:: machinery.helpers.task_holder
 
+Queues
+------
+
+.. autoclass:: machinery.helpers.EnsureItemGetter
+
+.. autoprotocol:: machinery.helpers.protocols.SyncQueue
+
+.. autofunction:: machinery.helpers.sync_queue
+
+.. autoprotocol:: machinery.helpers.protocols.Queue
+
+.. autofunction:: machinery.helpers.queue
+
 Odd helpers
 -----------
 
