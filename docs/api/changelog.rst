@@ -1,7 +1,7 @@
 .. _changelog:
 
 Changelog
----------
+=========
 
 .. _release-0.2.0:
 

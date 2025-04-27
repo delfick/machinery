@@ -1,7 +1,7 @@
 .. _async_helpers:
 
 Async Helpers
--------------
+=============
 
 The ``machinery`` library provides a number of utilities to make it easier to
 use asyncio concepts without creating memory leaks or those annoying warnings
@@ -19,3 +19,15 @@ being completed.
 .. autoprotocol:: machinery.helpers.protocols.CTX
     :member-order: bysource
 
+Odd helpers
+-----------
+
+There are few standalone helpers for some odd functionality:
+
+.. autofunction:: machinery.helpers.ensure_aexit
+
+.. autofunction:: machinery.helpers.stop_async_generator
+
+.. autofunction:: machinery.helpers.noncancelled_results_from_futs
+
+.. autofunction:: machinery.helpers.find_and_apply_result
