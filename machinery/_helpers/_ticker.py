@@ -37,19 +37,6 @@ class _TickerOptions[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
     waiter: asyncio.Event = dataclasses.field(default_factory=asyncio.Event)
 
-    async def tick(self) -> AsyncGenerator[tuple[int, float]]:
-        final_handle = None
-        if self.max_time:
-            final_handle = self.ctx.loop.call_later(self.max_time, self.max_time_reached.cancel)
-
-        try:
-            async for info in self._tick():
-                yield info
-        finally:
-            if final_handle:
-                final_handle.cancel()
-            self._change_handle()
-
     def change_after(self, every: int, *, set_new_every: bool = True) -> None:
         old_every = self.schedule.every
         if set_new_every:
@@ -98,7 +85,7 @@ class _TickerOptions[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
         return await self.ctx.wait_for_first(self.ctx, self.waiter, self.max_time_reached)
 
-    async def _tick(self) -> AsyncGenerator[tuple[int, float]]:
+    async def tick(self) -> AsyncGenerator[tuple[int, float]]:
         start = time.time()
         iteration = 0
         self.schedule.expected = start
@@ -259,6 +246,9 @@ async def tick[T_Tramp: _protocols.Tramp = _protocols.Tramp](
     with ctx.child(name="{name}ticker", prefix=name) as ctx_ticker:
         max_time_reached = ctx.loop.create_future()
         ctx.tramp.set_future_name(max_time_reached, name=f"{ctx_ticker.name}::[max_time_reached]")
+
+        if max_time:
+            ctx.loop.call_later(max_time, max_time_reached.cancel)
 
         options = _TickerOptions(
             schedule=_TickerSchedule(every=every),
