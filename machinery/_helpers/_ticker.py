@@ -59,32 +59,6 @@ class _TickerOptions[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         else:
             self._change_handle(self.ctx.loop.call_later(diff, self._waited))
 
-    def _change_handle(self, handle: asyncio.Handle | None = None) -> None:
-        if self.schedule.handle:
-            self.schedule.handle.cancel()
-        self.schedule.handle = handle
-
-    def _waited(self) -> None:
-        self.waiter.set()
-
-    async def _wait_for_next(self) -> None:
-        pauser = self.pauser
-
-        if pauser is not None and pauser.locked():
-
-            async def pause() -> None:
-                async with pauser:
-                    pass
-
-            task = self.ctx.async_as_background(pause())
-            try:
-                await self.ctx.wait_for_first(task, self.ctx)
-            finally:
-                task.cancel()
-                await self.ctx.wait_for_all(task)
-
-        return await self.ctx.wait_for_first(self.ctx, self.waiter, self.max_time_reached)
-
     async def tick(self) -> AsyncGenerator[tuple[int, float]]:
         start = time.time()
         iteration = 0
@@ -136,6 +110,32 @@ class _TickerOptions[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
             if self.min_wait is not False or diff > 0:
                 iteration += 1
                 yield iteration, max([diff, 0])
+
+    def _change_handle(self, handle: asyncio.Handle | None = None) -> None:
+        if self.schedule.handle:
+            self.schedule.handle.cancel()
+        self.schedule.handle = handle
+
+    def _waited(self) -> None:
+        self.waiter.set()
+
+    async def _wait_for_next(self) -> None:
+        pauser = self.pauser
+
+        if pauser is not None and pauser.locked():
+
+            async def pause() -> None:
+                async with pauser:
+                    pass
+
+            task = self.ctx.async_as_background(pause())
+            try:
+                await self.ctx.wait_for_first(task, self.ctx)
+            finally:
+                task.cancel()
+                await self.ctx.wait_for_all(task)
+
+        return await self.ctx.wait_for_first(self.ctx, self.waiter, self.max_time_reached)
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
