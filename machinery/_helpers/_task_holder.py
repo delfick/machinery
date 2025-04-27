@@ -114,22 +114,23 @@ class _TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
         Whilst this runs, we can still add more tasks to the holder.
         """
-        if value and not self._ctx.done():
-            self._ctx.set_exception(value)
-
         try:
             while any(not t.done() for t in self._ts):
                 for t in self._ts:
-                    if self._ctx.done():
+                    if self._ctx.done() or value is not None:
                         t.cancel()
 
                 if self._ts:
-                    if self._ctx.done():
+                    if self._ctx.done() or value is not None:
                         await self._ctx.wait_for_all(self._ctx, *self._ts)
                     else:
                         await self._ctx.wait_for_first(self._ctx, *self._ts)
 
                     self._ts[:] = [t for t in self._ts if not t.done()]
+        except asyncio.CancelledError:
+            for t in self._ts:
+                t.cancel()
+            raise
         finally:
             if self._cleaner:
                 for cleaner in self._cleaner:

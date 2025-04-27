@@ -1,6 +1,7 @@
 import asyncio
 import logging
-from collections.abc import Iterator
+import time
+from collections.abc import AsyncGenerator, Iterator
 
 import pytest
 
@@ -19,12 +20,20 @@ def ctx() -> Iterator[hp.CTX]:
         yield ctx
 
 
+@pytest.fixture
+async def fake_mocked_later(ctx: hp.CTX) -> AsyncGenerator[thp.MockedCallLater]:
+    async with thp.mocked_call_later(ctx=ctx) as m:
+        yield m
+
+
 class TestTaskHolder:
     async def test_takes_in_a_ctx(self, ctx: hp.CTX) -> None:
         async with hp.task_holder(ctx=ctx) as ts:
             assert list(ts) == []
 
-    async def test_can_take_in_tasks(self, ctx: hp.CTX) -> None:
+    async def test_can_take_in_tasks(
+        self, ctx: hp.CTX, fake_mocked_later: thp.MockedCallLater
+    ) -> None:
         called = []
 
         async def wait(amount: float) -> None:
@@ -34,13 +43,13 @@ class TestTaskHolder:
                 called.append(amount)
 
         async with hp.task_holder(ctx=ctx) as ts:
-            ts.add_coroutine(wait(0.05))
-            ts.add_coroutine(wait(0.01))
+            ts.add_coroutine(wait(5))
+            ts.add_coroutine(wait(1))
 
-        assert called == [0.01, 0.05]
+        assert called == [1, 5]
 
     async def test_exits_if_we_finish_all_tasks_before_the_manager_is_left(
-        self, ctx: hp.CTX
+        self, ctx: hp.CTX, fake_mocked_later: thp.MockedCallLater
     ) -> None:
         called = []
 
@@ -51,70 +60,84 @@ class TestTaskHolder:
                 called.append(amount)
 
         async with hp.task_holder(ctx=ctx) as ts:
-            await ts.add_coroutine(wait(0.05))
-            await ts.add_coroutine(wait(0.01))
-            assert called == [0.05, 0.01]
+            await ts.add_coroutine(wait(5))
+            await ts.add_coroutine(wait(1))
+            assert called == [5, 1]
 
-        assert called == [0.05, 0.01]
+        assert called == [5, 1]
 
     async def test_can_wait_for_more_tasks_if_they_are_added_when_the_manager_has_left(
-        self, ctx: hp.CTX
+        self, ctx: hp.CTX, fake_mocked_later: thp.MockedCallLater
     ) -> None:
         called = []
 
         async def wait(ts: hp.protocols.TaskHolder, amount: float) -> None:
-            if amount == 0.01:
-                ts.add_coroutine(wait(ts, 0.06))
+            if amount == 1:
+                ts.add_coroutine(wait(ts, 6))
             try:
                 await asyncio.sleep(amount)
             finally:
                 called.append(amount)
 
         async with hp.task_holder(ctx=ctx) as ts:
-            ts.add_coroutine(wait(ts, 0.05))
-            ts.add_coroutine(wait(ts, 0.01))
+            ts.add_coroutine(wait(ts, 5))
+            ts.add_coroutine(wait(ts, 1))
 
-        assert called == [0.01, 0.05, 0.06]
+        assert called == [1, 5, 6]
 
-    async def test_does_not_fail_if_a_task_raises_an_exception(self, ctx: hp.CTX) -> None:
+    async def test_does_not_fail_if_a_task_raises_an_exception(
+        self,
+        ctx: hp.CTX,
+        fake_mocked_later: thp.MockedCallLater,
+    ) -> None:
         called = []
 
         async def wait(ts: hp.protocols.TaskHolder, amount: float) -> None:
-            if amount == 0.01:
-                ts.add_coroutine(wait(ts, 0.06))
+            if amount == 1:
+                ts.add_coroutine(wait(ts, 6))
             try:
-                if amount == 0.06:
+                if amount == 6:
                     raise TypeError("WAT")
                 await asyncio.sleep(amount)
             finally:
                 called.append(amount)
 
         async with hp.task_holder(ctx=ctx) as ts:
-            ts.add_coroutine(wait(ts, 0.05))
-            ts.add_coroutine(wait(ts, 0.01))
+            ts.add_coroutine(wait(ts, 5))
+            ts.add_coroutine(wait(ts, 1))
 
-        assert called == [0.06, 0.01, 0.05]
+        assert called == [6, 1, 5]
 
-    async def test_stops_waiting_tasks_if_ctx_is_stopped(self, ctx: hp.CTX) -> None:
-        called = []
+    async def test_stops_waiting_tasks_if_ctx_is_stopped(
+        self, ctx: hp.CTX, fake_mocked_later: thp.MockedCallLater
+    ) -> None:
+        called: list[object] = []
 
         async def wait(ts: hp.protocols.TaskHolder, amount: float) -> None:
             try:
                 await asyncio.sleep(amount)
-                if amount == 0.05:
+                if amount == 1:
+                    called.append(("cancelling", time.time()))
                     ctx.cancel()
             except asyncio.CancelledError:
-                called.append(("CANCELLED", amount))
+                called.append(("CANCELLED", amount, time.time()))
             finally:
-                called.append(("FINISHED", amount))
+                called.append(("FINISHED", amount, time.time()))
 
         async with hp.task_holder(ctx=ctx) as ts:
             ts.add_coroutine(wait(ts, 5))
-            ts.add_coroutine(wait(ts, 0.05))
+            ts.add_coroutine(wait(ts, 1))
 
-        assert called == [("FINISHED", 0.05), ("CANCELLED", 5), ("FINISHED", 5)]
+        assert called == [
+            ("cancelling", 1),
+            ("FINISHED", 1, 1),
+            ("CANCELLED", 5, 1),
+            ("FINISHED", 5, 1),
+        ]
 
-    async def test_can_say_how_many_pending_tasks_it_has(self, ctx: hp.CTX) -> None:
+    async def test_can_say_how_many_pending_tasks_it_has(
+        self, ctx: hp.CTX, fake_mocked_later: thp.MockedCallLater
+    ) -> None:
         called = []
 
         async def doit() -> None:
@@ -134,10 +157,10 @@ class TestTaskHolder:
         assert called == [0]
 
     async def test_cancels_tasks_if_it_gets_cancelled(
-        self, ctx: hp.CTX, loop: asyncio.AbstractEventLoop
+        self, ctx: hp.CTX, loop: asyncio.AbstractEventLoop, fake_mocked_later: thp.MockedCallLater
     ) -> None:
         called: list[object] = []
-        waiter = loop.create_future()
+        waiter = asyncio.Event()
 
         async def a_task(name: str) -> None:
             called.append(f"{name}_start")
@@ -154,13 +177,12 @@ class TestTaskHolder:
             async with hp.task_holder(ctx=ctx) as t:
                 t.add_coroutine(a_task("one"))
                 t.add_coroutine(a_task("two"))
-                waiter.set_result(True)
-                await loop.create_future()
+                waiter.set()
 
         t = None
         try:
             t = ctx.async_as_background(doit())
-            await waiter
+            await waiter.wait()
             t.cancel()
         finally:
             if t:

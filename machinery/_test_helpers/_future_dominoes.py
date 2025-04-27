@@ -297,12 +297,16 @@ async def future_dominoes(
     ctx = hp.CTX.beginning(loop=loop, name="::", tramp=tramp)
 
     with ctx.child(name="{name}future_dominoes", prefix=name) as ctx_future_dominoes:
-        async with hp.task_holder(ctx=ctx_future_dominoes) as task_holder:
-            with ctx_future_dominoes.child(name="dominoes") as ctx_dominoes:
+        with (
+            ctx_future_dominoes.child(name="dominoes") as ctx_dominoes,
+            ctx_future_dominoes.child(name="task_holder") as ctx_task_holder,
+        ):
+            async with hp.task_holder(ctx=ctx_task_holder) as task_holder:
                 with _FutureDominoes.create(
                     ctx=ctx_dominoes, task_holder=task_holder, expected=expected
                 ) as dominoes:
                     yield dominoes
+                    ctx_task_holder.cancel()
 
 
 if TYPE_CHECKING:
