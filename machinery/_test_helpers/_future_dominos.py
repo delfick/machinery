@@ -13,6 +13,8 @@ from machinery import helpers as hp
 class Domino(Protocol):
     """
     Used to represent the futures provided by FutureDominos.
+
+    A type alias for this exists at ``machinery.test_helpers.Domino``
     """
 
     def __await__(self) -> Generator[None]:
@@ -67,6 +69,8 @@ class FutureDominos[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp](Protocol):
     """
     An object that represents a "domino" set of futures that only complete as
     each previous domino is retrieved and awaited
+
+    A type alias for this exists at ``machinery.test_helpers.FutureDominos``
     """
 
     @property

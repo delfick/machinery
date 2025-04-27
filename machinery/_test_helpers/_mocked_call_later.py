@@ -44,6 +44,8 @@ class _CallableWithOriginal(Protocol):
 class Cancellable(Protocol):
     """
     An object that can be cancelled.
+
+    A type alias for this exists at ``machinery.test_helpers.Cancellable``
     """
 
     def cancel(self) -> None: ...
@@ -52,6 +54,8 @@ class Cancellable(Protocol):
 class MockedCallLater(Protocol):
     """
     The interface returned by ``thp.mocked_call_later``
+
+    A type alias for this exists at ``machinery.test_helpers.MockedCallLater``
     """
 
     @property
