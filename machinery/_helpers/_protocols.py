@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import types
-from collections.abc import AsyncGenerator, Callable, Coroutine, Iterable, Iterator
+from collections.abc import AsyncGenerator, Callable, Coroutine, Generator, Iterable, Iterator
 from typing import TYPE_CHECKING, Any, Protocol, Self, cast
 
 
@@ -40,6 +40,11 @@ class FutureCTXCallback[T_Ret, T_Tramp: Tramp = Tramp](Protocol):
 
 
 class WaitByCallback[T_Ret](Protocol):
+    """
+    Represents an object that supports adding and removing callbacks for when
+    the object is done.
+    """
+
     def done(self) -> bool: ...
     def cancel(self) -> bool: ...
     def add_done_callback(
@@ -49,62 +54,249 @@ class WaitByCallback[T_Ret](Protocol):
 
 
 class WithRepr(Protocol):
+    """
+    Represents an object we can call ``repr`` with.
+    """
+
     def __repr__(self) -> str: ...
 
 
 class Tramp(Protocol):
-    def set_future_name(self, fut: asyncio.Future[Any], *, name: str) -> None: ...
-    def get_future_name(self, fut: asyncio.Future[Any]) -> str | None: ...
-    def log_info(self, msg: str) -> None: ...
+    """
+    This is an object that is passed around with ``CTX`` objects. It has on it
+    the ability to log exceptions and info, as well as the ability to hold onto
+    names for futures.
+
+    In python, asyncio.Future objects don't have names and when you have a large
+    program with lots of futures hanging around, it becomes very useful to be
+    able to name them to understand what they are actually representing.
+    """
+
+    def set_future_name(self, fut: asyncio.Future[Any], *, name: str) -> None:
+        """
+        Given some future, give it a name. This should be done such that the
+        name can be retrieved by the sibling ``get_future_name`` function.
+        """
+
+    def get_future_name(self, fut: asyncio.Future[Any]) -> str | None:
+        """
+        Given some future, return it's name as set by ``set_future_name``.
+
+        If no name was set, then return None.
+        """
+
+    def log_info(self, msg: str) -> None:
+        """
+        Log a simple message somewhere. It is up to the implementation to determine
+        what that means.
+        """
+
     def log_exception(
         self,
         msg: object,
         *,
         exc_info: tuple[type[BaseException], BaseException, types.TracebackType] | None = None,
-    ) -> None: ...
+    ) -> None:
+        """
+        Log an exception somewhere. It is up to the implementation to determine
+        what that means.
+        """
 
-    def fut_to_string(self, f: asyncio.Future[Any] | WithRepr, with_name: bool = True) -> str: ...
+    def fut_to_string(self, f: asyncio.Future[Any] | WithRepr, with_name: bool = True) -> str:
+        """
+        Given some future, or simply an object with the abiliy to call ``repr``
+        on it, return a string representing the future.
+
+        It is up to the implementation to determine how that actually works.
+
+        The default implementation in machinery will report whether the future
+        is pending, cancelled, has an exception or has a result. It will also
+        provide the name as retrieved from ``get_future_name`` if ``with_name``
+        is provided as ``True``.
+        """
 
     @property
-    def reporter(self) -> FutureCallback[Any]: ...
+    def reporter(self) -> FutureCallback[Any]:
+        """
+        Return a callable that can be provided as a done callback for a future.
+
+        It is good practice to always give a done callback to a future that looks
+        at ``cancelled``, ``exception`` or ``result`` depending on the status
+        of the future, to prevent ``asyncio`` from complaining they weren't
+        accessed.
+
+        The implementation of this callable should log when the future was
+        finished with an exception.
+        """
 
     @property
-    def silent_reporter(self) -> FutureCallback[Any]: ...
+    def silent_reporter(self) -> FutureCallback[Any]:
+        """
+        Return a callable that can be provided as a done callback for a future.
+
+        It is good practice to always give a done callback to a future that looks
+        at ``cancelled``, ``exception`` or ``result`` depending on the status
+        of the future, to prevent ``asyncio`` from complaining they weren't
+        accessed.
+
+        The implementation of this callable should **not** log when the future
+        was finished with an exception.
+        """
 
 
 class CTX[T_Tramp: Tramp = Tramp](Protocol):
-    @property
-    def loop(self) -> asyncio.AbstractEventLoop: ...
+    """
+    This object represents a chain of dependency that lets parents in the chain
+    cancel children in the chain by cancelling themselves.
+
+    This is loosely based off how contexts work in Go and very loosely based off
+    the ideas in languages like erlang with supervisor processes. It is very
+    simple and is mainly about ensuring that if a parent is cancelled, so are
+    it's children.
+
+    It also contains some useful helpers for working with futures.
+
+    It is good practice for an object that holds onto one of these, to never
+    cancel it's own context and instead rely on it's parent to cancel the context
+    it is provided.
+
+    So usage looks like:
+
+    .. code-block:: python
+
+        ctx: hp.CTX = ...
+
+
+        with ctx.child(name="SomeObject") as ctx_some_object:
+            some_object = SomeObject(ctx=ctx_some_object)
+            # some_object should never itself call ``self.ctx.cancel()``
+            ...
+
+    Objects that intend to finish should have a mechanism for signalling to itself
+    it is done, rather than rely on cancelling the context. Stopping based off
+    the ctx being done should only be an indication that the parent wishes to force
+    the object to stop what it is doing.
+
+    The context also provides the ability to have additional methods by being
+    generic to the ``Tramp``. It is recommended in your own program you create
+    a type alias to this class to refer to, so in your code, nothing changes
+    if you wish to create a different default type for the tramp.
+    """
 
     @property
-    def name(self) -> str: ...
+    def loop(self) -> asyncio.AbstractEventLoop:
+        """
+        The event loop this context is based off.
+        """
 
     @property
-    def tramp(self) -> T_Tramp: ...
+    def name(self) -> str:
+        """
+        The name associated with this context.
+        """
 
-    def set_exception(self, exc: BaseException) -> None: ...
+    @property
+    def tramp(self) -> T_Tramp:
+        """
+        The tramp allows us to provide the context with additional functionality
+        without making the context itself generic.
+
+        The minimum functionality of this object provides the ability to name
+        futures and do simple logging.
+        """
+
+    def set_exception(self, exc: BaseException) -> None:
+        """
+        Set an exception on this context and propagate that exception to all
+        children contexts.
+        """
 
     def add_on_done(
         self,
         cb: FutureCTXCallback[None, T_Tramp],
         index: FutureCallback[None] | None = None,
-    ) -> FutureCallback[None]: ...
+    ) -> FutureCallback[None]:
+        """
+        Register a callback to be called when this context finishes.
 
-    def done(self) -> bool: ...
-    def cancel(self) -> bool: ...
-    def exception(self) -> BaseException | None: ...
-    def cancelled(self) -> bool: ...
+        The callback will be provided with both this context and the result of
+        the future this context represents.
 
-    def add_done_callback(
-        self, cb: Callable[[FutureStatus[None]], None]
-    ) -> FutureCallback[None]: ...
-    def remove_done_callback(self, cb: Callable[[FutureStatus[None]], None]) -> int: ...
+        To add a done callback that doesn't take in the context, use
+        ``add_done_callback``
 
-    def has_direct_done_callback(self, cb: Callable[[FutureStatus[None]], None]) -> bool: ...
+        If index is provided, then that will be used as the hashable object that
+        is recognised by ``remove_done_callback`` to unregister the callback.
+        """
 
-    async def wait_for_first(self, *futs: WaitByCallback[Any] | asyncio.Event) -> None: ...
+    def done(self) -> bool:
+        """
+        Return True if the future this context represents is completed
+        """
 
-    async def wait_for_all(self, *futs: WaitByCallback[Any] | asyncio.Event) -> None: ...
+    def cancel(self) -> bool:
+        """
+        Cancel the future this context represents.
+
+        This is a safe no-op if the future is already done.
+        """
+
+    def exception(self) -> BaseException | None:
+        """
+        Get the exception this future was set with if there was one.
+
+        If the future is not complete this will raise an exception as like what
+        happens with ``asyncio.Future`` objects.
+        """
+
+    def cancelled(self) -> bool:
+        """
+        Return True if the future represented by this context has been cancelled.
+        """
+
+    def add_done_callback(self, cb: Callable[[FutureStatus[None]], None]) -> FutureCallback[None]:
+        """
+        Register a callback to be called when this future completes.
+
+        If the future is already complete, the callback will be called straight
+        away.
+        """
+
+    def remove_done_callback(self, cb: Callable[[FutureStatus[None]], None]) -> int:
+        """
+        Remove the callback from the callbacks on the future represented by this
+        callback if that callback was represented.
+
+        Return the number of futures this callback was removed from (a context
+        may hold onto many futures)
+        """
+
+    def has_direct_done_callback(self, cb: Callable[[FutureStatus[None]], None]) -> bool:
+        """
+        Return whether this context has this callback registered. If a parent context
+        has this callback registered but this one does not, then True will not
+        be returned.
+        """
+
+    async def wait_for_first(self, *waits: WaitByCallback[Any] | asyncio.Event) -> None:
+        """
+        Given a number of futures, tasks or events, return when at least one of
+        them is complete.
+
+        The default implementation of ``CTX`` will ensure that if any of these
+        have been provided and one is already complete, that we will at least
+        do an ``await asyncio.sleep(0)`` before returning.
+        """
+
+    async def wait_for_all(self, *waits: WaitByCallback[Any] | asyncio.Event) -> None:
+        """
+        Given a number of futures, tasks or events, return only when all of them
+        are complete.
+
+        The default implementation of ``CTX`` will ensure that if any of these
+        have been provided and they are all already complete, that we will at least
+        do an ``await asyncio.sleep(0)`` before returning.
+        """
 
     async def async_with_timeout[T_Ret](
         self,
@@ -115,22 +307,80 @@ class CTX[T_Tramp: Tramp = Tramp](Protocol):
         timeout: int = 10,
         timeout_event: asyncio.Event | None = None,
         timeout_error: BaseException | None = None,
-    ) -> T_Ret: ...
+    ) -> T_Ret:
+        """
+        Wait for the provided coroutine has completed and either return the result
+        from that coroutine, or raise the exception if the coroutine throws an
+        exception, or through a timeout exception if the coroutine is still
+        running after the provided timeout.
+
+        In the default implementation of ``CTX``, If ``timeout_error`` is provided
+        then that error will be raised if the timeout is reached, otherwise the
+        coroutine will be sent an ``asyncio.CancelledError()`` and that will be raised.
+
+        The ``timeout_event`` will be set if the timeout is reached before the
+        task is complete, otherwise it is never set.
+
+        The default implementation will return only after the task is finished
+        cleaning up, which may be some time after the timeout if the task
+        catches the ``asyncio.CancelledError`` and does more work.
+        """
 
     def async_as_background[T_Ret](
         self, coro: Coroutine[object, object, T_Ret], *, silent: bool = True
-    ) -> asyncio.Task[T_Ret]: ...
+    ) -> asyncio.Task[T_Ret]:
+        """
+        In the default implementation of ``CTX``, this will create an
+        ``asyncio.Task`` from this coroutine and provide either
+        ``tramp.reporter`` or ``tramp.silent_reporter`` as a done callback
+        depending on the result of ``silent``
 
-    def child(self, *, name: str, prefix: str = "") -> Self: ...
+        It is up to the user to ensure that this task is awaited at some point
+        to avoid asyncio warnings about the task never being awaited.
 
-    def __enter__(self) -> Self: ...
+        For example:
+
+        .. code-block:: python
+
+            task = ctx.async_as_background(my_async_function())
+            try:
+                await ctx.wait_for_first(task, some_other_event)
+            finally:
+                task.cancel()
+                await ctx.wait_for_all(task)
+        """
+
+    def child(self, *, name: str, prefix: str = "") -> Self:
+        """
+        Create a child context with the provided name and prefix.
+
+        If prefix is provided then the default implementation will set the name
+        to be ``[{prefix}]-->{name}``
+
+        The child context will be provided the tramp that is on this context
+        and will know about all the futures held by this context.
+        """
+
+    def __await__(self) -> Generator[None]:
+        """
+        Wait for this context to be complete
+        """
+
+    def __enter__(self) -> Self:
+        """
+        Using the context as a context manager will ensure that it is cancelled
+        when it goes out of scope.
+        """
 
     def __exit__(
         self,
         exc_type: type[BaseException] | None,
         value: BaseException | None,
         tb: types.TracebackType | None,
-    ) -> None: ...
+    ) -> None:
+        """
+        Ensure the context is cancelled when it goes out of scope.
+        """
 
 
 class TaskHolder(Protocol):

@@ -17,6 +17,12 @@ _context_fut_names: contextvars.ContextVar[FutNames] = contextvars.ContextVar("f
 
 
 def get_fut_names() -> FutNames:
+    """
+    Retrieve the dictionary of names for futures in this asyncio context.
+
+    This is held in a contextvars.ContextVar and is local to specific asyncio
+    loops.
+    """
     try:
         return _context_fut_names.get()
     except LookupError:
@@ -26,6 +32,16 @@ def get_fut_names() -> FutNames:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class Tramp:
+    """
+    This represents customizable logic for the ``CTX`` and makes it easy to provide
+    additional functionality to a ``CTX`` without making the ``CTX`` itself
+    generic.
+
+    It is recommended in your own projects to have an alias of ``CTX`` that you
+    refer to so it's easy to change your project to use a different default
+    implementation of Tramp later down the road.
+    """
+
     log: logging.Logger
 
     def __hash__(self) -> int:
@@ -111,6 +127,12 @@ class Tramp:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class _CTXCallback[T_Ret, T_Tramp: _protocols.Tramp]:
+    """
+    This is a small wrapper around a callback such that we can provide a callback
+    to the ``CTX`` that can only be called once despite being provided to multiple
+    futures.
+    """
+
     ctx: _protocols.CTX[T_Tramp]
 
     cb: _protocols.FutureCTXCallback[T_Ret, T_Tramp]
@@ -126,6 +148,19 @@ class _CTXCallback[T_Ret, T_Tramp: _protocols.Tramp]:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
+    """
+    An object loosely based off contexts in Go to provide a chain of dependency
+    between async objects such that cancelling the parent propagates that to
+    all children contexts.
+
+    It is recommended to create an alias to this in your project so later down
+    the track it is easy to define it with a different default implementation of
+    the Tramp if that becomes desirable.
+
+    The tramp is where you can add additional functionality so that the context
+    itself doesn't need to be made generic.
+    """
+
     name: str
     loop: asyncio.AbstractEventLoop
     tramp: T_Tramp
@@ -140,6 +175,10 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     def beginning(
         cls, *, name: str, tramp: T_Tramp, loop: asyncio.AbstractEventLoop | None = None
     ) -> Self:
+        """
+        Create a root level context using either the loop provided, or the current
+        running loop.
+        """
         if loop is None:
             loop = asyncio.get_event_loop_policy().get_event_loop()
 
@@ -150,12 +189,24 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         return cls(name=name, tramp=tramp, loop=loop, _futs=(final_future,))
 
     def __hash__(self) -> int:
+        """
+        A context is unique by a combination of it's name, loop, tramp and the
+        set of futures it holds onto.
+        """
         return hash((self.name, self.loop, self.tramp, tuple(self._futs)))
 
     def __enter__(self) -> Self:
+        """
+        Using a context as a context manager ensures it is cancelled when out of
+        scope.
+        """
         return self
 
     def __repr__(self) -> str:
+        """
+        Make a slightly useful repr for the context showing the state of the
+        futures it holds onto.
+        """
         fut_results: list[str] = []
         for fut in self._futs:
             fut_name = self.tramp.get_future_name(fut)
@@ -173,32 +224,69 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     def __exit__(
         self,
         exc_type: type[BaseException] | None = None,
-        exc: BaseException | None = None,
+        value: BaseException | None = None,
         tb: types.TracebackType | None = None,
     ) -> None:
+        """
+        Ensure the context is cancelled when it exits it's context manager.
+        """
         self.cancel()
 
     def done(self) -> bool:
+        """
+        A context is done if any of the futures it holds onto are done.
+
+        When child contexts are created, it is provided a reference to the futures
+        held by it's parent. And futures are never added to a context after
+        the context is created.
+
+        So we can rely on this list to tell us if a parent has also completed.
+        """
         return any(fut.done() for fut in self._futs)
 
     def set_exception(self, exc: BaseException) -> None:
+        """
+        Set an exception on the latest future, which represents the future of
+        this context. This means we can cancel this context without affecting
+        any parent context.
+        """
         self._futs[-1].set_exception(exc)
 
     def cancel(self) -> bool:
+        """
+        Cancel the latest future, which represents the future of
+        this context. This means we can cancel this context without affecting
+        any parent context.
+        """
         return self._futs[-1].cancel()
 
     def cancelled(self) -> bool:
+        """
+        Return True if this context or any parent context has been cancelled.
+        """
         for fut in reversed(self._futs):
             if fut.done():
                 return fut.cancelled()
 
+        # Return as if we were calling cancelled on the root future if none of
+        # the futures are complete. This allows us to replicate the behaviour
+        # of calling cancelled on a real asyncio.Future.
         return self._futs[0].cancelled()
 
     def exception(self) -> BaseException | None:
+        """
+        Return the exception from the oldest parent that is done.
+
+        If an younger parent is complete but had no exception, then no exception
+        is returned, even if an older parent is complete with an exception.
+        """
         for fut in reversed(self._futs):
             if fut.done():
                 return fut.exception()
 
+        # Return as if we were calling exception on the root future if none of
+        # the futures are complete. This allows us to replicate the behaviour
+        # of calling exception on a real asyncio.Future.
         return self._futs[0].exception()
 
     def add_on_done(
@@ -206,19 +294,39 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         cb: _protocols.FutureCTXCallback[None, T_Tramp],
         index: _protocols.FutureCallback[None] | None = None,
     ) -> _protocols.FutureCallback[None]:
+        """
+        This is similar to ``add_done_callback`` but we provide a callback that
+        also takes in the context itself.
+
+        We return the callback that was registered. If ``index`` is provided, then
+        providing that object to ``remove_done_callback`` can also be used to
+        unregister this callback from the context.
+
+        The callback will only be called once when this context is complete.
+        """
         callback = _CTXCallback[None, T_Tramp](ctx=self, cb=cb)
 
         if index is None:
+            # This gets used by ``add_done_callback`` and so it's useful to
+            # be able to unregister this callback using the callback that was
+            # used in that function rather than this special wrapped version
             index = callback
 
         for fut in reversed(self._futs):
             if fut.done():
+                # No need to register the callback if it's gonna be called
+                # straight away
                 fut.add_done_callback(callback)
                 return callback
 
         self._callbacks[index] = callback
 
         for fut in self._futs:
+            # Our _CTXCallback object means that we can register the callback
+            # to all of the futures held by this context and be assured
+            # the callback only gets called once even though when a parent
+            # context is complete, all child futures will then be marked as
+            # complete and call the callback.
             fut.add_done_callback(callback)
 
         return callback
@@ -226,12 +334,28 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     def add_done_callback(
         self, cb: Callable[[_protocols.FutureStatus[None]], None]
     ) -> _protocols.FutureCallback[None]:
+        """
+        Add a callback to be called when this context or any of it's parents are
+        complete.
+
+        It is provided the future that represents the state of the complete context.
+        """
+
         def wrapped(_: _protocols.CTX[T_Tramp], res: _protocols.FutureStatus[None]) -> None:
             return cb(res)
 
+        # Use add_on_done to ensure the callback is only ever called once.
         return self.add_on_done(wrapped, index=cb)
 
     def remove_done_callback(self, cb: Callable[[_protocols.FutureStatus[None]], None]) -> int:
+        """
+        Unregister the provided callback if it has been registered to run when
+        this context is complete.
+
+        We return the number of futures it was returned from. This number can
+        be more than one depending on how many parent futures this context is
+        aware of.
+        """
         counts: list[int] = []
         ctx_callable = self._callbacks.pop(cb, None)
         for fut in self._futs:
@@ -247,11 +371,21 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     def has_direct_done_callback(
         self, cb: Callable[[_protocols.FutureStatus[None]], None]
     ) -> bool:
+        """
+        Return whether this context has this callback registered.
+
+        If the callback is registered in a parent context, then this will not
+        return True.
+        """
         return cb in self._callbacks
 
     async def wait_for_first(self, *waits: _protocols.WaitByCallback[Any] | asyncio.Event) -> None:
         """
-        Return without error when the first future to be completed is done.
+        Given a number of futures, tasks or events, return when at least one of them
+        is complete.
+
+        If any are provided and one is already is complete then we will at least
+        do an ``await asyncio.sleep(0)`` before returning.
         """
         if not waits:
             return
@@ -264,6 +398,8 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         )
 
         if any_events_done or any_futures_done:
+            # Ensure that at least one cycle of the event loop is run even though
+            # at least one of our waits is complete
             await asyncio.sleep(0)
             return
 
@@ -271,6 +407,9 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         tasks: list[asyncio.Task[Literal[True]]] = []
         for wait in waits:
             if isinstance(wait, asyncio.Event):
+                # We need to create a task to track events
+                # We then ensure at the end that all these tasks are cancelled
+                # And awaited before exiting
                 task = self.loop.create_task(wait.wait())
                 tasks.append(task)
                 futs.append(task)
@@ -312,6 +451,8 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         waiter = asyncio.Event()
 
         if all_events_done and all_futures_done:
+            # Ensure that at least one cycle of the event loop is run even though
+            # all our waits are already completed
             await asyncio.sleep(0)
             return
 
@@ -319,6 +460,9 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         tasks: list[asyncio.Task[Literal[True]]] = []
         for wait in waits:
             if isinstance(wait, asyncio.Event):
+                # We need to create a task to track events
+                # We then ensure at the end that all these tasks are cancelled
+                # And awaited before exiting
                 task = self.loop.create_task(wait.wait())
                 tasks.append(task)
                 futs.append(task)
@@ -364,7 +508,8 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         on timeout.
 
         If a ``timeout_event`` is provided, then it is set when the timeout occurs
-        if the task is  still running.
+        if the task is  still running. It is never set if the timeout is reached
+        after the task is complete.
 
         This function does not return until the task has finished cleanup.
         """
@@ -420,6 +565,15 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     def async_as_background[T_Ret](
         self, coro: Coroutine[object, object, T_Ret], *, silent: bool = True
     ) -> asyncio.Task[T_Ret]:
+        """
+        Create an asyncio.Task from the provided coroutine and provide either
+        ``tramp.reporter`` or ``tramp.silent_reporter`` as a done callback
+        depending on the value of ``silent``.
+
+        It is up to the caller to ensure that the task is awaited before the
+        program is finished to avoid asyncio complaining about a task that is
+        never awaited.
+        """
         task = self.loop.create_task(coro)
 
         if silent:
@@ -430,6 +584,14 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         return task
 
     def child(self, *, name: str, prefix: str = "") -> Self:
+        """
+        Create a child context with the provided name and prefix.
+
+        If prefix is provided then the name will be ``[{prefix}]-->{name}``
+
+        The child context will be provided the tramp that is on this context
+        and will know about all the futures held by this context.
+        """
         if prefix:
             prefix = f"[{prefix}]-->"
 
@@ -445,9 +607,16 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         )
 
     def __await__(self) -> Generator[None]:
+        """
+        Wait for this context to be complete
+        """
         return self._wait().__await__()
 
     async def _wait(self) -> None:
+        """
+        The logic used by ``__await__`` to not return until all the futures
+        recognised by this context are complete
+        """
         for fut in reversed(self._futs):
             if fut.done():
                 await fut
