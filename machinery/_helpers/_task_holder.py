@@ -44,13 +44,6 @@ class _TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         """
         return self.add_task(self._ctx.async_as_background(coro, silent=silent))
 
-    def _set_cleaner_waiter(self, res: _protocols.FutureStatus[object]) -> None:
-        """
-        A done callback to set the cleaner waiter that has a return annotation
-        that aligns with task.add_done_callback
-        """
-        self._cleaner_waiter.set()
-
     def add_task[T_Ret](self, task: asyncio.Task[T_Ret]) -> asyncio.Task[T_Ret]:
         """
         Hold onto a task.
@@ -61,18 +54,25 @@ class _TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         create an effective memory leak.
         """
         if not self._cleaner:
+            # Ensure we have a task that cleans up done tasks
             t = self._ctx.async_as_background(self._cleaner_task())
             self._cleaner.append(t)
 
-            def remove_cleaner(res: _protocols.FutureStatus[None]) -> None:
-                if self._cleaner and self._cleaner[0] is t:
-                    self._cleaner.clear()
-
-            t.add_done_callback(remove_cleaner)
-
+        # Ensure we wake up our cleanup task the next time a task completes
         task.add_done_callback(self._set_cleaner_waiter)
+
         self._ts.append(task)
         return task
+
+    def _set_cleaner_waiter(self, res: _protocols.FutureStatus[object]) -> None:
+        """
+        A done callback to set the cleaner waiter that has a return annotation
+        that aligns with task.add_done_callback
+
+        This wakes up our cleanup task when a task finishes so that a cleanup
+        is performed.
+        """
+        self._cleaner_waiter.set()
 
     async def _start(self) -> Self:
         """
@@ -113,10 +113,11 @@ class _TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
                     self._ts[:] = [t for t in self._ts if not t.done()]
         finally:
             if self._cleaner:
-                self._cleaner[0].cancel()
+                for cleaner in self._cleaner:
+                    cleaner.cancel()
                 await self._ctx.wait_for_all(*self._cleaner)
 
-            await self._ctx.wait_for_all(self._ctx.async_as_background(self._perform_clean()))
+            await self._perform_clean()
 
     @property
     def pending(self) -> int:
@@ -138,6 +139,14 @@ class _TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         return iter(self._ts)
 
     async def _cleaner_task(self) -> None:
+        """
+        We ensure this function is running when we add new tasks to the holder.
+
+        It ensures that tasks are cleaned up as they are completed so long
+        lived task holders do not hold onto tasks indefinitely.
+
+        It sits idle until tasks are completed.
+        """
         while True:
             await self._cleaner_waiter.wait()
             self._cleaner_waiter.clear()
@@ -159,6 +168,9 @@ class _TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
                 remaining.append(t)
 
         await self._ctx.wait_for_all(*destroyed)
+
+        # Ensure we get both remaining tasks and any that have been added
+        # While the cleanup was performed
         self._ts[:] = remaining + [
             t for t in self._ts if t not in destroyed and t not in remaining
         ]
