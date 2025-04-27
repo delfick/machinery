@@ -24,7 +24,7 @@ class _CallLater(Protocol):
 
 class _CallableWithOriginal(Protocol):
     @property
-    def original(self) -> Callable[..., object]: ...
+    def original(self) -> Callable[..., object | None]: ...
 
     def __call__(self) -> None: ...
 
@@ -90,20 +90,20 @@ class _MockedCallLater:
 
         self.have_call_later.set()
 
-        info = {"cancelled": False}
+        cancelled = asyncio.Event()
 
         class Caller:
             def __init__(s) -> None:
                 self.original = func
 
             def __call__(s) -> None:
-                if not info["cancelled"]:
+                if not cancelled.is_set():
                     self.called_times.append(time.time())
                     func(*args)
 
         class Handle:
             def cancel(s) -> None:
-                info["cancelled"] = True
+                cancelled.set()
 
         self.funcs.append((round(time.time() + when, 3), Caller()))
         return Handle()
@@ -116,7 +116,7 @@ class _MockedCallLater:
             if ready_len <= until:
                 return
 
-    async def _run(self, iterations: int = 0) -> bool:
+    async def _run(self, iterations: int = 0) -> None:
         for iteration in range(iterations + 1):
             now = time.time()
             executed = False
@@ -137,8 +137,6 @@ class _MockedCallLater:
 
         if not executed and iterations == 0:
             self._time = round(self._time + self._precision, 3)
-
-        return executed
 
 
 @contextlib.asynccontextmanager
