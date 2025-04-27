@@ -13,18 +13,27 @@ class _Stop(Exception):
 
 
 @dataclasses.dataclass(kw_only=True)
+class _TickerSchedule:
+    """
+    A mutable class that holds mutable values. This allows us to set
+    everything else to frozen dataclasses
+    """
+
+    every: int
+    handle: asyncio.Handle | None = None
+    expected: float | None = None
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class _TickerOptions[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     ctx: _protocols.CTX[T_Tramp]
-    every: int
+    schedule: _TickerSchedule
     max_time_reached: _protocols.WaitByCallback[None]
 
     max_iterations: int | None = None
     max_time: int | None = None
     min_wait: float = 0.1
     pauser: asyncio.Semaphore | None = None
-
-    handle: asyncio.Handle | None = None
-    expected: float | None = None
 
     waiter: asyncio.Event = dataclasses.field(default_factory=asyncio.Event)
 
@@ -42,18 +51,18 @@ class _TickerOptions[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
             self._change_handle()
 
     def change_after(self, every: int, *, set_new_every: bool = True) -> None:
-        old_every = self.every
+        old_every = self.schedule.every
         if set_new_every:
-            self.every = every
+            self.schedule.every = every
 
-        if self.expected is None:
+        if self.schedule.expected is None:
             return
 
-        last = self.expected - old_every
+        last = self.schedule.expected - old_every
 
         expected = last + every
         if set_new_every:
-            self.expected = expected
+            self.schedule.expected = expected
 
         diff = round(expected - time.time(), 3)
         self._change_handle()
@@ -64,9 +73,9 @@ class _TickerOptions[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
             self._change_handle(self.ctx.loop.call_later(diff, self._waited))
 
     def _change_handle(self, handle: asyncio.Handle | None = None) -> None:
-        if self.handle:
-            self.handle.cancel()
-        self.handle = handle
+        if self.schedule.handle:
+            self.schedule.handle.cancel()
+        self.schedule.handle = handle
 
     def _waited(self) -> None:
         self.waiter.set()
@@ -92,7 +101,7 @@ class _TickerOptions[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     async def _tick(self) -> AsyncGenerator[tuple[int, float]]:
         start = time.time()
         iteration = 0
-        self.expected = start
+        self.schedule.expected = start
 
         self._waited()
 
@@ -114,26 +123,26 @@ class _TickerOptions[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
                 return
 
             if self.min_wait is False:
-                diff = self.expected - now
+                diff = self.schedule.expected - now
                 if diff == 0:
-                    self.expected += self.every
+                    self.schedule.expected += self.schedule.every
                 else:
-                    while diff <= -self.every:
-                        self.expected += self.every
-                        diff = self.expected - now
+                    while diff <= -self.schedule.every:
+                        self.schedule.expected += self.schedule.every
+                        diff = self.schedule.expected - now
 
-                    while self.expected - now <= 0:
-                        self.expected += self.every
+                    while self.schedule.expected - now <= 0:
+                        self.schedule.expected += self.schedule.every
             else:
                 diff = self.min_wait
-                if self.every > 0:
-                    while self.expected - now < self.min_wait:
-                        self.expected += self.every
+                if self.schedule.every > 0:
+                    while self.schedule.expected - now < self.min_wait:
+                        self.schedule.expected += self.schedule.every
 
-                    diff = round(self.expected - now, 3)
+                    diff = round(self.schedule.expected - now, 3)
 
             if diff == 0:
-                diff = self.expected - now
+                diff = self.schedule.expected - now
 
             self._change_handle(self.ctx.loop.call_later(diff, self._waited))
 
@@ -202,7 +211,7 @@ async def tick[T_Tramp: _protocols.Tramp = _protocols.Tramp](
     1 and the ``time_till_next`` is the number of seconds till the next time we
     yield a value.
 
-    Note that the every value can be changed during iteration:
+    Note that the schedule value can be changed during iteration:
 
     .. code-block:: python
 
@@ -240,18 +249,19 @@ async def tick[T_Tramp: _protocols.Tramp = _protocols.Tramp](
     min_wait
         The minimum amount of time to wait after a tick.
 
-        If this is False then we will always just tick at the next expected time,
+        If this is False then we will always tick at the next expected time,
         otherwise we ensure this amount of time at a minimum between ticks
 
     pauser
-        If not None, we use this as a semaphore in an async with to pause the ticks
+        If not None, we use this as a semaphore that will pause the ticks when
+        it is locked.
     """
     with ctx.child(name="{name}ticker", prefix=name) as ctx_ticker:
         max_time_reached = ctx.loop.create_future()
         ctx.tramp.set_future_name(max_time_reached, name=f"{ctx_ticker.name}::[max_time_reached]")
 
         options = _TickerOptions(
-            every=every,
+            schedule=_TickerSchedule(every=every),
             ctx=ctx_ticker,
             max_time_reached=max_time_reached,
             max_iterations=max_iterations,
