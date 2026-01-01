@@ -6,8 +6,6 @@ from collections.abc import Sequence
 
 from ..standard import union_types
 
-T = tp.TypeVar("T")
-
 
 class IsAnnotated(tp.Protocol):
     """
@@ -50,7 +48,7 @@ class IsAnnotated(tp.Protocol):
         )
 
 
-def extract_optional(typ: T) -> tuple[bool, T]:
+def extract_optional[T](typ: T) -> tuple[bool, T]:
     """
     Given a type annotation, return a boolean indicating whether the type is optional,
     and a new type without the optional:
@@ -83,7 +81,7 @@ def extract_optional(typ: T) -> tuple[bool, T]:
     return optional, typ
 
 
-def extract_annotation(typ: T) -> tuple[T, IsAnnotated | None, Sequence[object] | None]:
+def extract_annotation[T](typ: T) -> tuple[T, IsAnnotated | None, Sequence[object] | None]:
     """
     Given a type annotation return it without any annotation with the annotation it had:
 

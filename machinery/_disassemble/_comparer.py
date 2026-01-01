@@ -227,7 +227,7 @@ class Distilled:
                 result = tuple((*result, type(None)))
 
         if optional and as_generic is not None and is_valid:
-            as_generic = tp.Optional[as_generic]
+            as_generic = as_generic | None
 
         return cls(
             original=result,
@@ -370,14 +370,14 @@ class Comparer:
             if all(isinstance(part, type) for part in chck_type):
                 chck_type = functools.reduce(operator.or_, chck_type)
             elif len(chck_type) == 2 and chck_type[1] in (None, type(None)):
-                chck_type = tp.Optional[self.type_cache.disassemble(chck_type[0]).checkable]
+                chck_type = tp.Optional[self.type_cache.disassemble(chck_type[0]).checkable]  # noqa: UP045
 
         chck_against_type = chck_against.as_generic or chck_against.original
         if isinstance(chck_against_type, tuple) and chck_against_type:
             if all(isinstance(part, type) for part in chck_against_type):
                 chck_against_type = functools.reduce(operator.or_, chck_against_type)
             elif len(chck_against_type) == 2 and chck_against_type[1] in (None, type(None)):
-                chck_against_type = tp.Optional[
+                chck_against_type = tp.Optional[  # noqa: UP045
                     self.type_cache.disassemble(chck_against_type[0]).checkable
                 ]
 

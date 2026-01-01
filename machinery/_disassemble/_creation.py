@@ -7,10 +7,8 @@ import cattrs
 from ..not_specified import NotSpecified
 from ._base import Type
 
-T = tp.TypeVar("T")
 
-
-def fill(want: Type[T], res: object) -> tp.Mapping[str, object]:
+def fill[T](want: Type[T], res: object) -> tp.Mapping[str, object]:
     """
     Given a :class:`strcs.Type` and some object, ensure the object has ``NotSpecified`` as values for
     any missing key that we want to go through :class:`strcs` logic.
@@ -36,7 +34,7 @@ def fill(want: Type[T], res: object) -> tp.Mapping[str, object]:
     return res
 
 
-def instantiate(want: Type[T], res: object, converter: cattrs.Converter) -> T:
+def instantiate[T](want: Type[T], res: object, converter: cattrs.Converter) -> T:
     """
     Given a :class:`strcs.Type` and some object, turn that object into an instance of our type.
 

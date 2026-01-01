@@ -8,9 +8,6 @@ import attrs
 if tp.TYPE_CHECKING:
     from ._base import Type, TypeCache
 
-T = tp.TypeVar("T")
-U = tp.TypeVar("U")
-
 
 def _get_type() -> type["Type"]:
     from ._base import Type
@@ -59,7 +56,7 @@ def kind_name_repr(kind: int) -> str:
 
 
 @attrs.define
-class Field(tp.Generic[T]):
+class Field[T]:
     """
     A container representing a single field on a class. Used to replicate the field functionality used in
     attrs and dataclasses.
@@ -85,7 +82,7 @@ class Field(tp.Generic[T]):
     original_owner: object = attrs.field(default=attrs.Factory(lambda s: s.owner, takes_self=True))
     "The class that originally defined this field"
 
-    def with_replaced_type(self, typ: "Type[U]") -> "Field[U]":
+    def with_replaced_type[U](self, typ: "Type[U]") -> "Field[U]":
         """
         Return a clone of this field, but with the provided type.
         """

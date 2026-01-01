@@ -196,7 +196,8 @@ class MRO:
 
         for index, (tv, val) in enumerate(itertools.zip_longest(parameters, self.args)):
             assert tv is not Type.Missing, tv
-            assert (origin := self.origin) is not None, origin
+            origin = self.origin
+            assert origin is not None, origin
 
             if not isinstance(tv, tp.TypeVar):
                 if origin is tp.Generic:

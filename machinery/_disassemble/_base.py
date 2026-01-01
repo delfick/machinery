@@ -29,12 +29,8 @@ if tp.TYPE_CHECKING:
     from ._type_tree import MRO
 
 
-T = tp.TypeVar("T")
-U = tp.TypeVar("U")
-
-
 @attrs.define
-class Type(tp.Generic[T]):
+class Type[T]:
     """
     Wraps any object to provide an interface for introspection. Used to represent
     python types and type annotations.
@@ -111,7 +107,7 @@ class Type(tp.Generic[T]):
     "The metadata in the annotation if the object is a typing.Annotated"
 
     @classmethod
-    def create(
+    def create[U](
         cls,
         typ: object,
         *,
@@ -723,7 +719,7 @@ class Type(tp.Generic[T]):
         return create_checkable(self)
 
 
-class Disassembler(tp.Protocol):
+class Disassembler[U](tp.Protocol):
     """
     Used to disassemble some type using an existing type cache
     """
