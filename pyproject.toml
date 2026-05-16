@@ -27,8 +27,14 @@ repository = "https://github.com/delfick/machinery"
 changelog = "https://machinery.readthedocs.io/en/latest/api/changelog.html"
 docs = "https://machinery.readthedocs.io"
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
+    "tools",
+    "machinery_test_driver",
+]
+
+[project.optional-dependencies]
+tools = [
     "tools",
     "machinery_test_driver",
 ]

@@ -344,6 +344,12 @@ wheels = [
 name = "machinery-collection"
 source = { editable = "." }
 
+[package.optional-dependencies]
+tools = [
+    { name = "machinery-test-driver" },
+    { name = "tools" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "machinery-test-driver" },
@@ -351,6 +357,11 @@ dev = [
 ]
 
 [package.metadata]
+requires-dist = [
+    { name = "machinery-test-driver", marker = "extra == 'tools'", editable = "helpers" },
+    { name = "tools", marker = "extra == 'tools'", virtual = "tools" },
+]
+provides-extras = ["tools"]
 
 [package.metadata.requires-dev]
 dev = [
