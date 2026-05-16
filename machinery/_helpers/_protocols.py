@@ -59,6 +59,22 @@ class WithRepr(Protocol):
     def __repr__(self) -> str: ...
 
 
+class Logger(Protocol):
+    """
+    Protocol used by the default implementation of Tramp for logging
+    """
+
+    def info(self, msg: str, /) -> None: ...
+
+    def exception(
+        self,
+        msg: str,
+        /,
+        *,
+        exc_info: tuple[type[BaseException], BaseException, types.TracebackType | None] | None,
+    ) -> None: ...
+
+
 class Tramp(Protocol):
     """
     This is an object that is passed around with ``CTX`` objects. It has on it
@@ -108,7 +124,9 @@ class Tramp(Protocol):
         self,
         msg: object,
         *,
-        exc_info: tuple[type[BaseException], BaseException, types.TracebackType] | None = None,
+        exc_info: (
+            tuple[type[BaseException], BaseException, types.TracebackType | None] | None
+        ) = None,
     ) -> None:
         """
         Log an exception somewhere. It is up to the implementation to determine

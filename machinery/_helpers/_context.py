@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import dataclasses
-import logging
 import types
 import weakref
 from collections.abc import Callable, Coroutine, Generator, Hashable, MutableMapping, Sequence
@@ -42,7 +41,7 @@ class Tramp:
     implementation of Tramp later down the road.
     """
 
-    log: logging.Logger
+    log: _protocols.Logger
 
     def __hash__(self) -> int:
         return id(self)
@@ -60,9 +59,11 @@ class Tramp:
         self,
         msg: object,
         *,
-        exc_info: tuple[type[BaseException], BaseException, types.TracebackType] | None = None,
+        exc_info: (
+            tuple[type[BaseException], BaseException, types.TracebackType | None] | None
+        ) = None,
     ) -> None:
-        self.log.exception(msg, exc_info=exc_info)
+        self.log.exception(str(msg), exc_info=exc_info)
 
     def fut_to_string(
         self, f: asyncio.Future[Any] | _protocols.WithRepr, with_name: bool = True
