@@ -3,6 +3,11 @@
 Changelog
 =========
 
+.. _release-0.2.1:
+
+0.2.1 - 16 May 2025
+    * Now exporting a py.typed!
+
 .. _release-0.2.0:
 
 0.2.0 - 27 April 2025
