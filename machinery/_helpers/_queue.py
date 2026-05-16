@@ -277,9 +277,9 @@ class _Queue[T_Item, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
 
 @overload
-def _queue(
+def _queue[T_Tramp: _protocols.Tramp = _protocols.Tramp](
     *,
-    ctx: _protocols.CTX,
+    ctx: _protocols.CTX[T_Tramp],
     empty_on_finished: bool = False,
     name: str = "",
     item_ensurer: None = None,
@@ -287,18 +287,18 @@ def _queue(
 
 
 @overload
-def _queue[T_Item](
+def _queue[T_Item, T_Tramp: _protocols.Tramp = _protocols.Tramp](
     *,
-    ctx: _protocols.CTX,
+    ctx: _protocols.CTX[T_Tramp],
     empty_on_finished: bool = False,
     name: str = "",
     item_ensurer: _protocols.QueueItemDef[T_Item],
 ) -> Iterator[_protocols.Queue[T_Item]]: ...
 
 
-def _queue[T_Item](
+def _queue[T_Item, T_Tramp: _protocols.Tramp = _protocols.Tramp](
     *,
-    ctx: _protocols.CTX,
+    ctx: _protocols.CTX[T_Tramp],
     empty_on_finished: bool = False,
     name: str = "",
     item_ensurer: _protocols.QueueItemDef[T_Item] | None = None,

@@ -178,8 +178,8 @@ class _TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
 
 @contextlib.asynccontextmanager
-async def task_holder(
-    *, ctx: _protocols.CTX, name: str = ""
+async def task_holder[T_Tramp: _protocols.Tramp = _protocols.Tramp](
+    *, ctx: _protocols.CTX[T_Tramp], name: str = ""
 ) -> AsyncGenerator[_protocols.TaskHolder]:
     """
     An object for managing asynchronous coroutines.

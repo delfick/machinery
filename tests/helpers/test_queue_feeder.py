@@ -1,5 +1,6 @@
 import asyncio
 import dataclasses
+import inspect
 import logging
 from collections.abc import AsyncGenerator, Callable, Coroutine, Iterator
 
@@ -600,7 +601,12 @@ class TestQueueFeeder:
 
             def __eq__(self, o: object) -> bool:
                 self.got = o
-                return isinstance(o, Coroutine) and self.func == closure[o.cr_code.co_name]
+
+                if not isinstance(o, Coroutine):
+                    return False
+
+                members = dict(inspect.getmembers(o))
+                return bool(members["cr_code"].co_name == "generator3")
 
             def __repr__(self) -> str:
                 if hasattr(self, "got"):
@@ -826,7 +832,11 @@ class TestQueueFeeder:
 
             def __eq__(self, o: object) -> bool:
                 self.got = o
-                return isinstance(o, AsyncGenerator) and o.ag_code.co_name == "generator3"
+                if not isinstance(o, AsyncGenerator):
+                    return False
+
+                members = dict(inspect.getmembers(o))
+                return bool(members["ag_code"].co_name == "generator3")
 
             def __repr__(self) -> str:
                 if hasattr(self, "got"):
