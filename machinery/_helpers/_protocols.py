@@ -279,7 +279,7 @@ class CTX(Protocol):
                 await ctx.wait_for_all(task)
         """
 
-    def child(self, *, name: str, prefix: str = "") -> Self:
+    def child(self, *, name: str, log: Logger | None = None, prefix: str = "") -> Self:
         """
         Create a child context with the provided name and prefix.
 

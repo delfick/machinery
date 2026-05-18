@@ -3,6 +3,11 @@
 Changelog
 =========
 
+.. _release-0.3.1:
+
+0.3.1 - 18 May 2026
+    * Added new 'log' keyword to the protocols.CTX::child method
+
 .. _release-0.3.0:
 
 0.3.0 - 18 May 2026
