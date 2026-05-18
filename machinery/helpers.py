@@ -3,7 +3,6 @@ from . import _helpers
 protocols = _helpers.protocols
 
 CTX = _helpers.context.CTX
-Tramp = _helpers.context.Tramp
 
 ensure_aexit = _helpers.async_mixin.ensure_aexit
 

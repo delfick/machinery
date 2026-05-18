@@ -127,12 +127,12 @@ class _QueueSource:
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
+class _QueueFeeder[T_QueueContext]:
     """
     Used to implement the ``hp.protocols.QueueFeeder`` interface.
     """
 
-    _ctx: _protocols.CTX[T_Tramp]
+    _ctx: _protocols.CTX
     _queue: _protocols.Queue[QueueManagerResult[T_QueueContext]]
     _task_holder: _protocols.TaskHolder
     _make_empty_context: Callable[[], T_QueueContext]
@@ -546,9 +546,9 @@ class _QueueFeeder[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp]
 
 
 @contextlib.asynccontextmanager
-async def queue_manager[T_QueueContext, T_Tramp: _protocols.Tramp = _protocols.Tramp](
+async def queue_manager[T_QueueContext](
     *,
-    ctx: _protocols.CTX[T_Tramp],
+    ctx: _protocols.CTX,
     make_empty_context: Callable[[], T_QueueContext],
     name: str = "",
 ) -> AsyncGenerator[

@@ -3,6 +3,11 @@
 Changelog
 =========
 
+.. _release-0.3.0:
+
+0.3.0 - TBD
+    * Removed the tramp concept, it seemed unnecessary
+
 .. _release-0.2.1:
 
 0.2.1 - 16 May 2025

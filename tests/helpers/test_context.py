@@ -24,8 +24,7 @@ def log() -> logging.Logger:
 
 @pytest.fixture
 def ctx(log: logging.Logger) -> Iterator[hp.CTX]:
-    tramp: hp.protocols.Tramp = hp.Tramp(log=log)
-    with hp.CTX.beginning(name="::", tramp=tramp) as ctx:
+    with hp.CTX.beginning(name="::", log=log) as ctx:
         yield ctx
 
 
@@ -88,99 +87,90 @@ class CalledHelper:
         return f"CH[{self._called}]"
 
 
-class TestTramp:
+class TestCTXFutureHelpers:
     class TestFutureNames:
         def test_can_set_and_get_names_for_futures(
-            self, log: logging.Logger, loop: asyncio.AbstractEventLoop
+            self, loop: asyncio.AbstractEventLoop, ctx: hp.CTX
         ) -> None:
             fut: asyncio.Future[None] = loop.create_future()
-            tramp = hp.Tramp(log=log)
 
-            assert tramp.get_future_name(fut) is None
+            assert ctx.get_future_name(fut) is None
 
-            tramp.set_future_name(fut, name="hello")
-            assert tramp.get_future_name(fut) == "hello"
+            ctx.set_future_name(fut, name="hello")
+            assert ctx.get_future_name(fut) == "hello"
 
             fut2: asyncio.Future[None] = loop.create_future()
-            assert tramp.get_future_name(fut2) is None
-            assert tramp.get_future_name(fut) == "hello"
+            assert ctx.get_future_name(fut2) is None
+            assert ctx.get_future_name(fut) == "hello"
 
-            tramp.set_future_name(fut, name="hi")
-            assert tramp.get_future_name(fut2) is None
-            assert tramp.get_future_name(fut) == "hi"
+            ctx.set_future_name(fut, name="hi")
+            assert ctx.get_future_name(fut2) is None
+            assert ctx.get_future_name(fut) == "hi"
 
-            tramp.set_future_name(fut2, name="there")
-            assert tramp.get_future_name(fut2) == "there"
-            assert tramp.get_future_name(fut) == "hi"
+            ctx.set_future_name(fut2, name="there")
+            assert ctx.get_future_name(fut2) == "there"
+            assert ctx.get_future_name(fut) == "hi"
 
-            assert _context.get_fut_names() == {fut: "hi", fut2: "there"}
+            assert _context.get_fut_names() == {fut: "hi", fut2: "there", ctx._futs[0]: "FUT{::}"}
             del fut
-            assert _context.get_fut_names() == {fut2: "there"}
+            assert _context.get_fut_names() == {fut2: "there", ctx._futs[0]: "FUT{::}"}
 
     class TestFutureToString:
-        @pytest.fixture
-        def tramp(self, log: logging.Logger) -> hp.Tramp:
-            return hp.Tramp(log=log)
-
-        def test_just_reprs_a_not_future(self, tramp: hp.Tramp) -> None:
+        def test_just_reprs_a_not_future(self, ctx: hp.CTX) -> None:
             class Thing:
                 def __repr__(s) -> str:
                     return "<REPR THING>"
 
-            assert tramp.fut_to_string(Thing()) == "<REPR THING>"
+            assert ctx.fut_to_string(Thing()) == "<REPR THING>"
 
         def test_says_if_the_future_is_pending(
-            self, loop: asyncio.AbstractEventLoop, tramp: hp.Tramp
+            self, loop: asyncio.AbstractEventLoop, ctx: hp.CTX
         ) -> None:
             fut: asyncio.Future[None] = loop.create_future()
-            tramp.set_future_name(fut, name="one")
-            assert tramp.fut_to_string(fut) == "<Future#one(pending)>"
+            ctx.set_future_name(fut, name="one")
+            assert ctx.fut_to_string(fut) == "<Future#one(pending)>"
 
             fut2: asyncio.Future[None] = loop.create_future()
-            assert tramp.fut_to_string(fut2) == "<Future#None(pending)>"
+            assert ctx.fut_to_string(fut2) == "<Future#None(pending)>"
 
         def test_says_if_the_future_is_cancelled(
-            self, loop: asyncio.AbstractEventLoop, tramp: hp.Tramp
+            self, loop: asyncio.AbstractEventLoop, ctx: hp.CTX
         ) -> None:
             fut: asyncio.Future[None] = loop.create_future()
-            tramp.set_future_name(fut, name="one")
+            ctx.set_future_name(fut, name="one")
             fut.cancel()
-            assert tramp.fut_to_string(fut) == "<Future#one(cancelled)>"
+            assert ctx.fut_to_string(fut) == "<Future#one(cancelled)>"
 
             fut2: asyncio.Future[None] = loop.create_future()
             fut2.cancel()
-            assert tramp.fut_to_string(fut2) == "<Future#None(cancelled)>"
+            assert ctx.fut_to_string(fut2) == "<Future#None(cancelled)>"
 
         def test_says_if_the_future_has_an_exception(
-            self, loop: asyncio.AbstractEventLoop, tramp: hp.Tramp
+            self, loop: asyncio.AbstractEventLoop, ctx: hp.CTX
         ) -> None:
             fut: asyncio.Future[None] = loop.create_future()
-            tramp.set_future_name(fut, name="one")
+            ctx.set_future_name(fut, name="one")
             fut.set_exception(ValueError("HI"))
-            assert tramp.fut_to_string(fut) == "<Future#one(exception:ValueError:HI)>"
+            assert ctx.fut_to_string(fut) == "<Future#one(exception:ValueError:HI)>"
 
             fut2: asyncio.Future[None] = loop.create_future()
             fut2.set_exception(TypeError("NOPE"))
-            assert tramp.fut_to_string(fut2) == "<Future#None(exception:TypeError:NOPE)>"
+            assert ctx.fut_to_string(fut2) == "<Future#None(exception:TypeError:NOPE)>"
 
         def test_says_if_the_future_has_a_result(
-            self, loop: asyncio.AbstractEventLoop, tramp: hp.Tramp
+            self, loop: asyncio.AbstractEventLoop, ctx: hp.CTX
         ) -> None:
             fut: asyncio.Future[bool] = loop.create_future()
-            tramp.set_future_name(fut, name="one")
+            ctx.set_future_name(fut, name="one")
             fut.set_result(True)
-            assert tramp.fut_to_string(fut) == "<Future#one(result)>"
+            assert ctx.fut_to_string(fut) == "<Future#one(result)>"
 
             fut2: asyncio.Future[bool] = loop.create_future()
             fut2.set_result(False)
-            assert tramp.fut_to_string(fut2) == "<Future#None(result)>"
+            assert ctx.fut_to_string(fut2) == "<Future#None(result)>"
 
     class TestLogException:
-        def test_log_exception(
-            self, log: logging.Logger, caplog: pytest.LogCaptureFixture
-        ) -> None:
-            tramp = hp.Tramp(log=log)
-
+        def test_log_exception(self, ctx: hp.CTX, caplog: pytest.LogCaptureFixture) -> None:
             error = ValueError("computer says no")
             exc_info: tuple[type[BaseException], BaseException, types.TracebackType]
 
@@ -195,7 +185,7 @@ class TestTramp:
             else:
                 raise AssertionError("Exception should have been raised")
 
-            tramp.log_exception(error, exc_info=exc_info)
+            ctx.log_exception(error, exc_info=exc_info)
 
             lines = [
                 "ERROR    root:_context.py:* computer says no",
@@ -209,21 +199,17 @@ class TestTramp:
             matcher.fnmatch_lines(lines)
 
     class TestSilentReporter:
-        @pytest.fixture
-        def tramp(self, log: logging.Logger) -> hp.Tramp:
-            return hp.Tramp(log=log)
-
         async def test_does_nothing_if_the_future_was_cancelled(
             self,
             log: logging.Logger,
             caplog: pytest.LogCaptureFixture,
             loop: asyncio.AbstractEventLoop,
+            ctx: hp.CTX,
         ) -> None:
-            tramp = hp.Tramp(log=log)
             fut: asyncio.Future[None] = loop.create_future()
             fut.cancel()
 
-            tramp.silent_reporter(fut)
+            ctx.silent_reporter(fut)
             assert caplog.text == ""
 
         async def test_does_nothing_if_the_future_has_an_exception(
@@ -231,11 +217,11 @@ class TestTramp:
             log: logging.Logger,
             caplog: pytest.LogCaptureFixture,
             loop: asyncio.AbstractEventLoop,
+            ctx: hp.CTX,
         ) -> None:
-            tramp = hp.Tramp(log=log)
             fut: asyncio.Future[None] = loop.create_future()
             fut.set_exception(Exception("wat"))
-            tramp.silent_reporter(fut)
+            ctx.silent_reporter(fut)
             assert caplog.text == ""
 
         async def test_does_nothing_if_we_have_a_result(
@@ -243,32 +229,28 @@ class TestTramp:
             log: logging.Logger,
             caplog: pytest.LogCaptureFixture,
             loop: asyncio.AbstractEventLoop,
+            ctx: hp.CTX,
         ) -> None:
             @dataclasses.dataclass(frozen=True)
             class Res:
                 name: str
 
-            tramp = hp.Tramp(log=log)
             fut: asyncio.Future[Res] = loop.create_future()
             fut.set_result(Res(name="result"))
-            tramp.silent_reporter(fut)
+            ctx.silent_reporter(fut)
             assert caplog.text == ""
 
     class TestReporter:
-        @pytest.fixture
-        def tramp(self, log: logging.Logger) -> hp.Tramp:
-            return hp.Tramp(log=log)
-
         async def test_does_nothing_if_the_future_was_cancelled(
             self,
             log: logging.Logger,
             caplog: pytest.LogCaptureFixture,
             loop: asyncio.AbstractEventLoop,
+            ctx: hp.CTX,
         ) -> None:
-            tramp = hp.Tramp(log=log)
             fut: asyncio.Future[None] = loop.create_future()
             fut.cancel()
-            tramp.reporter(fut)
+            ctx.reporter(fut)
             assert caplog.text == ""
 
         async def test_logs_exception_if_the_future_has_an_exception(
@@ -276,8 +258,8 @@ class TestTramp:
             log: logging.Logger,
             caplog: pytest.LogCaptureFixture,
             loop: asyncio.AbstractEventLoop,
+            ctx: hp.CTX,
         ) -> None:
-            tramp = hp.Tramp(log=log)
             fut: asyncio.Future[None] = loop.create_future()
 
             try:
@@ -285,7 +267,7 @@ class TestTramp:
             except Exception as e:
                 fut.set_exception(e)
 
-            tramp.reporter(fut)
+            ctx.reporter(fut)
 
             lines = [
                 "ERROR    root:_context.py:* computer says no",
@@ -303,26 +285,25 @@ class TestTramp:
             log: logging.Logger,
             caplog: pytest.LogCaptureFixture,
             loop: asyncio.AbstractEventLoop,
+            ctx: hp.CTX,
         ) -> None:
             @dataclasses.dataclass(frozen=True)
             class Res:
                 name: str
 
-            tramp = hp.Tramp(log=log)
             fut: asyncio.Future[Res] = loop.create_future()
             fut.set_result(Res(name="result"))
-            tramp.reporter(fut)
+            ctx.reporter(fut)
             assert caplog.text == ""
 
 
 class TestCTX:
     async def test_has_helper_to_create_first_ctx(self, log: logging.Logger) -> None:
-        tramp = hp.Tramp(log=log)
         loop = asyncio.get_event_loop_policy().get_event_loop()
 
-        with hp.CTX.beginning(name="start", tramp=tramp) as ctx:
+        with hp.CTX.beginning(name="start", log=log) as ctx:
             assert ctx.loop is loop
-            assert ctx.tramp is tramp
+            assert ctx.log is log
             assert ctx.name == "start"
 
             assert not ctx.done()
@@ -332,7 +313,7 @@ class TestCTX:
 
             with ctx.child(name="child") as child:
                 assert child.loop is loop
-                assert child.tramp is tramp
+                assert child.log is log
                 assert child.name == "start-->child"
 
                 assert not child.done()
@@ -509,7 +490,7 @@ class TestCTX:
 
         async def test_it_stops_waiting_on_first_parent_finishing(self, ctx: hp.CTX) -> None:
             waiter1: asyncio.Future[None] = ctx.loop.create_future()
-            ctx.tramp.set_future_name(waiter1, name="waiter1")
+            ctx.set_future_name(waiter1, name="waiter1")
 
             with ctx.child(name="one") as c1:
                 with c1.child(name="two") as c2:
@@ -537,7 +518,7 @@ class TestCTX:
                 pass
 
             waiter2: asyncio.Future[None] = ctx.loop.create_future()
-            ctx.tramp.set_future_name(waiter2, name="waiter2")
+            ctx.set_future_name(waiter2, name="waiter2")
             with ctx.child(name="four") as c4:
                 with c4.child(name="five") as c5:
                     with c5.child(name="six") as c6:
@@ -561,7 +542,7 @@ class TestCTX:
                             await ctx.wait_for_all(task)
 
             waiter3: asyncio.Future[None] = ctx.loop.create_future()
-            ctx.tramp.set_future_name(waiter3, name="waiter3")
+            ctx.set_future_name(waiter3, name="waiter3")
             with ctx.child(name="seven") as c7:
                 with c7.child(name="eight") as c8:
                     with c8.child(name="nine") as c9:

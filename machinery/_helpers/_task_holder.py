@@ -9,7 +9,7 @@ from . import _async_mixin, _protocols
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class _TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
+class _TaskHolder:
     """
     Used to create and hold onto asyncio.Task objects to ensure they are
     cleaned up correctly to avoid asyncio complaining about task objects that
@@ -28,7 +28,7 @@ class _TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         async with _async_mixin.ensure_aexit(self):
             return await self._start()
 
-    _ctx: _protocols.CTX[T_Tramp]
+    _ctx: _protocols.CTX
     _ts: list[_protocols.WaitByCallback[object]] = dataclasses.field(
         default_factory=list, init=False
     )
@@ -178,8 +178,8 @@ class _TaskHolder[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
 
 @contextlib.asynccontextmanager
-async def task_holder[T_Tramp: _protocols.Tramp = _protocols.Tramp](
-    *, ctx: _protocols.CTX[T_Tramp], name: str = ""
+async def task_holder(
+    *, ctx: _protocols.CTX, name: str = ""
 ) -> AsyncGenerator[_protocols.TaskHolder]:
     """
     An object for managing asynchronous coroutines.

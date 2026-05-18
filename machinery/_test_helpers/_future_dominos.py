@@ -65,7 +65,7 @@ class Domino(Protocol):
         """
 
 
-class FutureDominos[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp](Protocol):
+class FutureDominos(Protocol):
     """
     An object that represents a "domino" set of futures that only complete as
     each previous domino is retrieved and awaited
@@ -97,13 +97,13 @@ class FutureDominos[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp](Protocol):
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class _Domino[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
+class _Domino:
     """
     Implementation for each domino
     """
 
     _i: int
-    _ctx: hp.CTX[T_Tramp]
+    _ctx: hp.CTX
     _fut: asyncio.Future[None]
     _started: asyncio.Event
     _requirements: Sequence[tuple[asyncio.Future[None], asyncio.Future[None]]]
@@ -183,12 +183,12 @@ class _Domino[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class _FutureDominos[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
+class _FutureDominos:
     """
     Implementation for our future dominos.
     """
 
-    _ctx: hp.CTX[T_Tramp]
+    _ctx: hp.CTX
 
     started: asyncio.Event
     finished: asyncio.Event
@@ -219,7 +219,7 @@ class _FutureDominos[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
     def create(
         cls,
         *,
-        ctx: hp.CTX[T_Tramp],
+        ctx: hp.CTX,
         task_holder: hp.protocols.TaskHolder,
         expected: int,
     ) -> Self:
@@ -241,17 +241,17 @@ class _FutureDominos[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
         # We also create each domino and provide that to our list of futures
         for i in range(1, expected + 1):
             retrieved_fut = ctx.loop.create_future()
-            ctx.tramp.set_future_name(retrieved_fut, name=f"{ctx.name}-->[Retrieved({i})]")
+            ctx.set_future_name(retrieved_fut, name=f"{ctx.name}-->[Retrieved({i})]")
             retrieved[i] = retrieved_fut
 
             def announce(i: int, res: hp.protocols.FutureStatus[None]) -> None:
-                ctx.tramp.log_info(f"FUTURE_DOMINOES: future {i} retrieved")
+                ctx.log_info(f"FUTURE_DOMINOES: future {i} retrieved")
 
             retrieved[i].add_done_callback(functools.partial(announce, i))
 
             fut: asyncio.Future[None] = ctx.loop.create_future()
             requirements.append((retrieved_fut, fut))
-            ctx.tramp.set_future_name(fut, name=f"{ctx.name}-->[Domino({i})]")
+            ctx.set_future_name(fut, name=f"{ctx.name}-->[Domino({i})]")
             futs[i] = _Domino(
                 _ctx=ctx,
                 _started=started,
@@ -295,10 +295,10 @@ class _FutureDominos[T_Tramp: hp.protocols.Tramp = hp.protocols.Tramp]:
                 await retrieved
                 fut.set_result(None)
                 await fut
-                ctx.tramp.log_info(f"FUTURE_DOMINOES: future {i + 1} done")
+                ctx.log_info(f"FUTURE_DOMINOES: future {i + 1} done")
                 await instance._allow_real_loop()
 
-            ctx.tramp.log_info("FUTURE_DOMINOES: all knocked over")
+            ctx.log_info("FUTURE_DOMINOES: all knocked over")
             finished.set()
 
         task_holder.add_coroutine(knock())
@@ -443,8 +443,7 @@ async def future_dominos(
         log = logging.getLogger()
         log.level = logging.INFO
 
-    tramp: hp.protocols.Tramp = hp.Tramp(log=log)
-    ctx = hp.CTX.beginning(loop=loop, name="::", tramp=tramp)
+    ctx = hp.CTX.beginning(loop=loop, log=log, name="::")
 
     with ctx.child(name="{name}future_dominos", prefix=name) as ctx_future_dominos:
         with (

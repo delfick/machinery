@@ -40,13 +40,13 @@ class EnsureItemGetter[T_Item]:
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class _SyncQueue[T_Item = object, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
+class _SyncQueue[T_Item = object]:
     """
     A wrapper around the standard library ``queue.Queue`` class that implements
     ``hp.protocols.SyncQueue``
     """
 
-    _ctx: _protocols.CTX[T_Tramp]
+    _ctx: _protocols.CTX
     _timeout: float = 0.05
     _empty_on_finished: bool = False
     _item_ensurer: _protocols.QueueItemDef[T_Item]
@@ -136,12 +136,12 @@ class _Instruction:
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class _Queue[T_Item, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
+class _Queue[T_Item]:
     """
     An object that can asynchronously iterate values that are added to the queue.
     """
 
-    _ctx: _protocols.CTX[T_Tramp]
+    _ctx: _protocols.CTX
     _empty_on_finished: bool = False
 
     _waiter: asyncio.Event = dataclasses.field(default_factory=asyncio.Event, init=False)
@@ -277,9 +277,9 @@ class _Queue[T_Item, T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
 
 @overload
-def _queue[T_Tramp: _protocols.Tramp = _protocols.Tramp](
+def _queue(
     *,
-    ctx: _protocols.CTX[T_Tramp],
+    ctx: _protocols.CTX,
     empty_on_finished: bool = False,
     name: str = "",
     item_ensurer: None = None,
@@ -287,18 +287,18 @@ def _queue[T_Tramp: _protocols.Tramp = _protocols.Tramp](
 
 
 @overload
-def _queue[T_Item, T_Tramp: _protocols.Tramp = _protocols.Tramp](
+def _queue[T_Item](
     *,
-    ctx: _protocols.CTX[T_Tramp],
+    ctx: _protocols.CTX,
     empty_on_finished: bool = False,
     name: str = "",
     item_ensurer: _protocols.QueueItemDef[T_Item],
 ) -> Iterator[_protocols.Queue[T_Item]]: ...
 
 
-def _queue[T_Item, T_Tramp: _protocols.Tramp = _protocols.Tramp](
+def _queue[T_Item](
     *,
-    ctx: _protocols.CTX[T_Tramp],
+    ctx: _protocols.CTX,
     empty_on_finished: bool = False,
     name: str = "",
     item_ensurer: _protocols.QueueItemDef[T_Item] | None = None,

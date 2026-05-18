@@ -25,13 +25,13 @@ class _TickerSchedule:
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class _TickerOptions[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
+class _TickerOptions:
     """
     Represents the logic held by the ticker. It is used by the ``tick`` function
     below to implement the desired behaviour.
     """
 
-    ctx: _protocols.CTX[T_Tramp]
+    ctx: _protocols.CTX
     schedule: _TickerSchedule
     max_time_reached: _protocols.WaitByCallback[None]
 
@@ -165,13 +165,13 @@ class _TickerOptions[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class _Ticker[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
+class _Ticker:
     """
     Object used to represent the Ticker protocol that is yielded from the
     tick helper below.
     """
 
-    _options: _TickerOptions[T_Tramp]
+    _options: _TickerOptions
     _gen: AsyncGenerator[tuple[int, float]]
 
     @property
@@ -195,10 +195,10 @@ class _Ticker[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
 
 @contextlib.asynccontextmanager
-async def tick[T_Tramp: _protocols.Tramp = _protocols.Tramp](
+async def tick(
     every: int,
     *,
-    ctx: _protocols.CTX[T_Tramp],
+    ctx: _protocols.CTX,
     max_iterations: int | None = None,
     max_time: int | None = None,
     min_wait: float = 0.1,
@@ -285,7 +285,7 @@ async def tick[T_Tramp: _protocols.Tramp = _protocols.Tramp](
     """
     with ctx.child(name="{name}ticker", prefix=name) as ctx_ticker:
         max_time_reached = ctx.loop.create_future()
-        ctx.tramp.set_future_name(max_time_reached, name=f"{ctx_ticker.name}::[max_time_reached]")
+        ctx.set_future_name(max_time_reached, name=f"{ctx_ticker.name}::[max_time_reached]")
 
         def ensure_max_time_cancelled(res: _protocols.FutureStatus[None]) -> None:
             max_time_reached.cancel()

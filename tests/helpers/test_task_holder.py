@@ -15,8 +15,7 @@ def ctx() -> Iterator[hp.CTX]:
     log = logging.getLogger()
     log.setLevel(logging.INFO)
 
-    tramp: hp.protocols.Tramp = hp.Tramp(log=log)
-    with hp.CTX.beginning(name="::", tramp=tramp) as ctx:
+    with hp.CTX.beginning(name="::", log=log) as ctx:
         yield ctx
 
 

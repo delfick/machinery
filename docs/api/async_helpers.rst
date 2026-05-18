@@ -13,9 +13,6 @@ that are loosely based of contexts in Go and allow us to create dependency
 chains where the parent being completed results in all children contexts also
 being completed.
 
-.. autoprotocol:: machinery.helpers.protocols.Tramp
-    :member-order: bysource
-
 .. autoprotocol:: machinery.helpers.protocols.CTX
     :member-order: bysource
 

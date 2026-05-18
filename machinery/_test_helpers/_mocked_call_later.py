@@ -256,8 +256,7 @@ async def mocked_call_later(
     if ctx is None:
         log = logging.getLogger()
         log.level = logging.INFO
-        tramp: hp.protocols.Tramp = hp.Tramp(log=log)
-        ctx = hp.CTX.beginning(name="::", tramp=tramp)
+        ctx = hp.CTX.beginning(name="::", log=log)
 
     with ctx.child(name=f"{name}mocked_call_later", prefix=name) as ctx_mocked:
         instance = _MockedCallLater(

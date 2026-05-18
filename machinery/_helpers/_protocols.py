@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import types
 from collections.abc import AsyncGenerator, Callable, Coroutine, Generator, Iterable, Iterator
@@ -27,14 +29,14 @@ class FutureCallback[T_Ret](Protocol):
     def __call__(self, res: FutureStatus[T_Ret], /) -> None: ...
 
 
-class FutureCTXCallback[T_Ret, T_Tramp: Tramp = Tramp](Protocol):
+class FutureCTXCallback[T_Ret](Protocol):
     """
     Represents an object that's used as a done_callback for a future but also
     takes in a CTX object.
     """
 
     def __hash__(self) -> int: ...
-    def __call__(self, ctx: "CTX[T_Tramp]", res: FutureStatus[T_Ret], /) -> None: ...
+    def __call__(self, ctx: CTX, res: FutureStatus[T_Ret], /) -> None: ...
 
 
 class WaitByCallback[T_Ret](Protocol):
@@ -61,7 +63,7 @@ class WithRepr(Protocol):
 
 class Logger(Protocol):
     """
-    Protocol used by the default implementation of Tramp for logging
+    Protocol used by the default implementation of CTX for logging
     """
 
     def info(self, msg: str, /) -> None: ...
@@ -75,107 +77,7 @@ class Logger(Protocol):
     ) -> None: ...
 
 
-class Tramp(Protocol):
-    """
-    This is an object that is passed around with ``CTX`` objects. It has on it
-    the ability to log exceptions and info, as well as the ability to hold onto
-    names for futures.
-
-    In python, asyncio.Future objects don't have names and when you have a large
-    program with lots of futures hanging around, it becomes very useful to be
-    able to name them to understand what they are actually representing.
-
-    The default implementation is provided by :class:`machinery.helpers.Tramp`
-    and this can be subclasses to add more methods.
-
-    Note that if you want to use these other methods, then you'll need your ``ctx``
-    to be typed as ``hp.protocols.CTX[MyCustomTramp]``.
-
-    It is recommended in your program to have an alias to refer to so that it's
-    easy to change the default at a later stage:
-
-    .. code-block:: python
-
-        from machinery import helpers as hp
-
-        type CTX[T_Tramp: MyCustomTramp = MyCustomTramp] = hp.protocols.CTX[T_Tramp]
-    """
-
-    def set_future_name(self, fut: asyncio.Future[Any], *, name: str) -> None:
-        """
-        Given some future, give it a name. This should be done such that the
-        name can be retrieved by the sibling ``get_future_name`` function.
-        """
-
-    def get_future_name(self, fut: asyncio.Future[Any]) -> str | None:
-        """
-        Given some future, return it's name as set by ``set_future_name``.
-
-        If no name was set, then return None.
-        """
-
-    def log_info(self, msg: str) -> None:
-        """
-        Log a simple message somewhere. It is up to the implementation to determine
-        what that means.
-        """
-
-    def log_exception(
-        self,
-        msg: object,
-        *,
-        exc_info: (
-            tuple[type[BaseException], BaseException, types.TracebackType | None] | None
-        ) = None,
-    ) -> None:
-        """
-        Log an exception somewhere. It is up to the implementation to determine
-        what that means.
-        """
-
-    def fut_to_string(self, f: asyncio.Future[Any] | WithRepr, with_name: bool = True) -> str:
-        """
-        Given some future, or simply an object with the abiliy to call ``repr``
-        on it, return a string representing the future.
-
-        It is up to the implementation to determine how that actually works.
-
-        The default implementation in machinery will report whether the future
-        is pending, cancelled, has an exception or has a result. It will also
-        provide the name as retrieved from ``get_future_name`` if ``with_name``
-        is provided as ``True``.
-        """
-
-    @property
-    def reporter(self) -> FutureCallback[Any]:
-        """
-        Return a callable that can be provided as a done callback for a future.
-
-        It is good practice to always give a done callback to a future that looks
-        at ``cancelled``, ``exception`` or ``result`` depending on the status
-        of the future, to prevent ``asyncio`` from complaining they weren't
-        accessed.
-
-        The implementation of this callable should log when the future was
-        finished with an exception.
-        """
-
-    @property
-    def silent_reporter(self) -> FutureCallback[Any]:
-        """
-        Return a callable that can be provided as a done callback for a future.
-
-        It is good practice to always give a done callback to a future that looks
-        at ``cancelled``, ``exception`` or ``result`` depending on the status
-        of the future, to prevent ``asyncio`` from complaining they weren't
-        accessed.
-
-        The implementation of this callable should **not** log when the future
-        was finished with an exception.
-        """
-
-
-class CTX[T_Tramp: Tramp = Tramp](Protocol):
+class CTX(Protocol):
     """
     This object represents a chain of dependency that lets parents in the chain
     cancel children in the chain by cancelling themselves.
@@ -186,6 +88,10 @@ class CTX[T_Tramp: Tramp = Tramp](Protocol):
     it's children.
 
     It also contains some useful helpers for working with futures.
+
+    In python, asyncio.Future objects don't have names and when you have a large
+    program with lots of futures hanging around, it becomes very useful to be
+    able to name them to understand what they are actually representing.
 
     It is good practice for an object that holds onto one of these, to never
     cancel it's own context and instead rely on it's parent to cancel the context
@@ -214,11 +120,6 @@ class CTX[T_Tramp: Tramp = Tramp](Protocol):
     it is done, rather than rely on cancelling the context. Stopping based off
     the ctx being done should only be an indication that the parent wishes to force
     the object to stop what it is doing.
-
-    The context also provides the ability to have additional methods by being
-    generic to the ``Tramp``. It is recommended in your own program you create
-    a type alias to this class to refer to, so in your code, nothing changes
-    if you wish to create a different default type for the tramp.
     """
 
     @property
@@ -233,16 +134,6 @@ class CTX[T_Tramp: Tramp = Tramp](Protocol):
         The name associated with this context.
         """
 
-    @property
-    def tramp(self) -> T_Tramp:
-        """
-        The tramp allows us to provide the context with additional functionality
-        without making the context itself generic.
-
-        The minimum functionality of this object provides the ability to name
-        futures and do simple logging.
-        """
-
     def set_exception(self, exc: BaseException) -> None:
         """
         Set an exception on this context and propagate that exception to all
@@ -251,7 +142,7 @@ class CTX[T_Tramp: Tramp = Tramp](Protocol):
 
     def add_on_done(
         self,
-        cb: FutureCTXCallback[None, T_Tramp],
+        cb: FutureCTXCallback[None],
         index: FutureCallback[None] | None = None,
     ) -> FutureCallback[None]:
         """
@@ -370,7 +261,7 @@ class CTX[T_Tramp: Tramp = Tramp](Protocol):
         """
         In the default implementation of ``CTX``, this will create an
         ``asyncio.Task`` from this coroutine and provide either
-        ``tramp.reporter`` or ``tramp.silent_reporter`` as a done callback
+        ``self.reporter`` or ``self.silent_reporter`` as a done callback
         depending on the result of ``silent``
 
         It is up to the user to ensure that this task is awaited at some point
@@ -395,8 +286,7 @@ class CTX[T_Tramp: Tramp = Tramp](Protocol):
         If prefix is provided then the default implementation will set the name
         to be ``[{prefix}]-->{name}``
 
-        The child context will be provided the tramp that is on this context
-        and will know about all the futures held by this context.
+        The child context will know about all the futures held by this context.
         """
 
     def __await__(self) -> Generator[None]:
@@ -418,6 +308,79 @@ class CTX[T_Tramp: Tramp = Tramp](Protocol):
     ) -> None:
         """
         Ensure the context is cancelled when it goes out of scope.
+        """
+
+    def set_future_name(self, fut: asyncio.Future[Any], *, name: str) -> None:
+        """
+        Given some future, give it a name. This should be done such that the
+        name can be retrieved by the sibling ``get_future_name`` function.
+        """
+
+    def get_future_name(self, fut: asyncio.Future[Any]) -> str | None:
+        """
+        Given some future, return it's name as set by ``set_future_name``.
+
+        If no name was set, then return None.
+        """
+
+    def log_info(self, msg: str) -> None:
+        """
+        Log a simple message somewhere. It is up to the implementation to determine
+        what that means.
+        """
+
+    def log_exception(
+        self,
+        msg: object,
+        *,
+        exc_info: (
+            tuple[type[BaseException], BaseException, types.TracebackType | None] | None
+        ) = None,
+    ) -> None:
+        """
+        Log an exception somewhere. It is up to the implementation to determine
+        what that means.
+        """
+
+    def fut_to_string(self, f: asyncio.Future[Any] | WithRepr, with_name: bool = True) -> str:
+        """
+        Given some future, or simply an object with the abiliy to call ``repr``
+        on it, return a string representing the future.
+
+        It is up to the implementation to determine how that actually works.
+
+        The default implementation in machinery will report whether the future
+        is pending, cancelled, has an exception or has a result. It will also
+        provide the name as retrieved from ``get_future_name`` if ``with_name``
+        is provided as ``True``.
+        """
+
+    @property
+    def reporter(self) -> FutureCallback[Any]:
+        """
+        Return a callable that can be provided as a done callback for a future.
+
+        It is good practice to always give a done callback to a future that looks
+        at ``cancelled``, ``exception`` or ``result`` depending on the status
+        of the future, to prevent ``asyncio`` from complaining they weren't
+        accessed.
+
+        The implementation of this callable should log when the future was
+        finished with an exception.
+        """
+
+    @property
+    def silent_reporter(self) -> FutureCallback[Any]:
+        """
+        Return a callable that can be provided as a done callback for a future.
+
+        It is good practice to always give a done callback to a future that looks
+        at ``cancelled``, ``exception`` or ``result`` depending on the status
+        of the future, to prevent ``asyncio`` from complaining they weren't
+        accessed.
+
+        The implementation of this callable should **not** log when the future
+        was finished with an exception.
         """
 
 

@@ -30,113 +30,16 @@ def get_fut_names() -> FutNames:
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class Tramp:
-    """
-    This represents customizable logic for the ``CTX`` and makes it easy to provide
-    additional functionality to a ``CTX`` without making the ``CTX`` itself
-    generic.
-
-    It is recommended in your own projects to have an alias of ``CTX`` that you
-    refer to so it's easy to change your project to use a different default
-    implementation of Tramp later down the road.
-    """
-
-    log: _protocols.Logger
-
-    def __hash__(self) -> int:
-        return id(self)
-
-    def set_future_name(self, fut: asyncio.Future[Any], *, name: str) -> None:
-        get_fut_names()[fut] = name
-
-    def get_future_name(self, fut: asyncio.Future[Any]) -> str | None:
-        return get_fut_names().get(fut)
-
-    def log_info(self, msg: str) -> None:
-        self.log.info(msg)
-
-    def log_exception(
-        self,
-        msg: object,
-        *,
-        exc_info: (
-            tuple[type[BaseException], BaseException, types.TracebackType | None] | None
-        ) = None,
-    ) -> None:
-        self.log.exception(str(msg), exc_info=exc_info)
-
-    def fut_to_string(
-        self, f: asyncio.Future[Any] | _protocols.WithRepr, with_name: bool = True
-    ) -> str:
-        if not isinstance(f, asyncio.Future):
-            return repr(f)
-
-        s = ""
-        if with_name:
-            s = f"<Future#{self.get_future_name(f)}"
-        if not f.done():
-            s = f"{s}(pending)"
-        elif f.cancelled():
-            s = f"{s}(cancelled)"
-        else:
-            exc = f.exception()
-            if exc:
-                s = f"{s}(exception:{type(exc).__name__}:{exc})"
-            else:
-                s = f"{s}(result)"
-        if with_name:
-            s = f"{s}>"
-        return s
-
-    def silent_reporter(self, res: _protocols.FutureStatus[Any]) -> None:
-        """
-        A generic reporter for asyncio tasks that doesn't log errors.
-
-        This means that exceptions are **not** logged to the terminal and you won't
-        get warnings about tasks not being looked at when they finish.
-        """
-        if res.cancelled():
-            return
-
-        exc = res.exception()
-        if exc is None:
-            res.result()
-
-    def reporter(self, res: _protocols.FutureStatus[Any]) -> None:
-        """
-        A generic reporter for asyncio tasks.
-
-        This means that exceptions are logged to the terminal and you won't
-        get warnings about tasks not being looked at when they finish.
-
-        Note that it will not report asyncio.CancelledError() or KeyboardInterrupt.
-        """
-        if res.cancelled():
-            return
-
-        exc = res.exception()
-        if exc is None:
-            res.result()
-            return
-
-        if not isinstance(exc, KeyboardInterrupt):
-            if exc.__traceback__ is not None:
-                self.log_exception(exc, exc_info=(type(exc), exc, exc.__traceback__))
-            else:
-                self.log_exception(exc)
-
-
-@dataclasses.dataclass(frozen=True, kw_only=True)
-class _CTXCallback[T_Ret, T_Tramp: _protocols.Tramp]:
+class _CTXCallback[T_Ret]:
     """
     This is a small wrapper around a callback such that we can provide a callback
     to the ``CTX`` that can only be called once despite being provided to multiple
     futures.
     """
 
-    ctx: _protocols.CTX[T_Tramp]
+    ctx: _protocols.CTX
 
-    cb: _protocols.FutureCTXCallback[T_Ret, T_Tramp]
+    cb: _protocols.FutureCTXCallback[T_Ret]
     event: asyncio.Event = dataclasses.field(init=False, default_factory=asyncio.Event)
 
     def __call__(self, res: _protocols.FutureStatus[T_Ret], /) -> None:
@@ -148,33 +51,26 @@ class _CTXCallback[T_Ret, T_Tramp: _protocols.Tramp]:
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
+class CTX:
     """
     An object loosely based off contexts in Go to provide a chain of dependency
     between async objects such that cancelling the parent propagates that to
     all children contexts.
-
-    It is recommended to create an alias to this in your project so later down
-    the track it is easy to define it with a different default implementation of
-    the Tramp if that becomes desirable.
-
-    The tramp is where you can add additional functionality so that the context
-    itself doesn't need to be made generic.
     """
 
     name: str
     loop: asyncio.AbstractEventLoop
-    tramp: T_Tramp
+    log: _protocols.Logger
 
     _futs: Sequence[asyncio.Future[None]]
 
-    _callbacks: MutableMapping[Hashable, _CTXCallback[None, T_Tramp]] = dataclasses.field(
+    _callbacks: MutableMapping[Hashable, _CTXCallback[None]] = dataclasses.field(
         init=False, default_factory=dict
     )
 
     @classmethod
     def beginning(
-        cls, *, name: str, tramp: T_Tramp, loop: asyncio.AbstractEventLoop | None = None
+        cls, *, name: str, log: _protocols.Logger, loop: asyncio.AbstractEventLoop | None = None
     ) -> Self:
         """
         Create a root level context using either the loop provided, or the current
@@ -184,17 +80,18 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
             loop = asyncio.get_event_loop_policy().get_event_loop()
 
         final_future: asyncio.Future[None] = loop.create_future()
-        tramp.set_future_name(final_future, name=f"FUT{{{name}}}")
-        final_future.add_done_callback(tramp.silent_reporter)
 
-        return cls(name=name, tramp=tramp, loop=loop, _futs=(final_future,))
+        instance = cls(name=name, log=log, loop=loop, _futs=(final_future,))
+        instance.set_future_name(final_future, name=f"FUT{{{name}}}")
+        final_future.add_done_callback(instance.silent_reporter)
+        return instance
 
     def __hash__(self) -> int:
         """
-        A context is unique by a combination of it's name, loop, tramp and the
+        A context is unique by a combination of it's name loop, and the
         set of futures it holds onto.
         """
-        return hash((self.name, self.loop, self.tramp, tuple(self._futs)))
+        return hash((self.name, self.loop, tuple(self._futs)))
 
     def __enter__(self) -> Self:
         """
@@ -210,7 +107,7 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         """
         fut_results: list[str] = []
         for fut in self._futs:
-            fut_name = self.tramp.get_future_name(fut)
+            fut_name = self.get_future_name(fut)
             if not fut.done():
                 fut_results.append(f"PENDING({fut_name})")
             elif fut.cancelled():
@@ -292,7 +189,7 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
     def add_on_done(
         self,
-        cb: _protocols.FutureCTXCallback[None, T_Tramp],
+        cb: _protocols.FutureCTXCallback[None],
         index: _protocols.FutureCallback[None] | None = None,
     ) -> _protocols.FutureCallback[None]:
         """
@@ -305,7 +202,7 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
 
         The callback will only be called once when this context is complete.
         """
-        callback = _CTXCallback[None, T_Tramp](ctx=self, cb=cb)
+        callback = _CTXCallback[None](ctx=self, cb=cb)
 
         if index is None:
             # This gets used by ``add_done_callback`` and so it's useful to
@@ -342,7 +239,7 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         It is provided the future that represents the state of the complete context.
         """
 
-        def wrapped(_: _protocols.CTX[T_Tramp], res: _protocols.FutureStatus[None]) -> None:
+        def wrapped(_: _protocols.CTX, res: _protocols.FutureStatus[None]) -> None:
             return cb(res)
 
         # Use add_on_done to ensure the callback is only ever called once.
@@ -515,8 +412,8 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         This function does not return until the task has finished cleanup.
         """
         result: asyncio.Future[T_Ret] = self.loop.create_future()
-        result.add_done_callback(self.tramp.silent_reporter)
-        self.tramp.set_future_name(result, name=f"RESULT_WITH_TIMEOUT{{{self.name}}}({name})")
+        result.add_done_callback(self.silent_reporter)
+        self.set_future_name(result, name=f"RESULT_WITH_TIMEOUT{{{self.name}}}({name})")
 
         task = self.async_as_background(coro, silent=silent)
 
@@ -568,7 +465,7 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
     ) -> asyncio.Task[T_Ret]:
         """
         Create an asyncio.Task from the provided coroutine and provide either
-        ``tramp.reporter`` or ``tramp.silent_reporter`` as a done callback
+        ``self.reporter`` or ``self.silent_reporter`` as a done callback
         depending on the value of ``silent``.
 
         It is up to the caller to ensure that the task is awaited before the
@@ -578,34 +475,38 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
         task = self.loop.create_task(coro)
 
         if silent:
-            task.add_done_callback(self.tramp.silent_reporter)
+            task.add_done_callback(self.silent_reporter)
         else:
-            task.add_done_callback(self.tramp.reporter)
+            task.add_done_callback(self.reporter)
 
         return task
 
-    def child(self, *, name: str, prefix: str = "") -> Self:
+    def child(self, *, name: str, log: _protocols.Logger | None = None, prefix: str = "") -> Self:
         """
         Create a child context with the provided name and prefix.
 
         If prefix is provided then the name will be ``[{prefix}]-->{name}``
 
-        The child context will be provided the tramp that is on this context
+        The child context will be provided the log that is on this context
         and will know about all the futures held by this context.
         """
         if prefix:
             prefix = f"[{prefix}]-->"
 
-        final_future: asyncio.Future[None] = self.loop.create_future()
-        self.tramp.set_future_name(final_future, name=f"{prefix}FUT{{{self.name}-->{name}}}")
-        final_future.add_done_callback(self.tramp.silent_reporter)
+        if log is None:
+            log = self.log
 
-        return dataclasses.replace(
+        final_future: asyncio.Future[None] = self.loop.create_future()
+
+        instance = dataclasses.replace(
             self,
             name=f"{self.name}-->{prefix}{name}",
-            tramp=self.tramp,
+            log=log,
             _futs=tuple([*self._futs, final_future]),
         )
+        instance.set_future_name(final_future, name=f"{prefix}FUT{{{self.name}-->{name}}}")
+        final_future.add_done_callback(instance.silent_reporter)
+        return instance
 
     def __await__(self) -> Generator[None]:
         """
@@ -630,9 +531,87 @@ class CTX[T_Tramp: _protocols.Tramp = _protocols.Tramp]:
                 await fut
                 return
 
+    def set_future_name(self, fut: asyncio.Future[Any], *, name: str) -> None:
+        get_fut_names()[fut] = name
+
+    def get_future_name(self, fut: asyncio.Future[Any]) -> str | None:
+        return get_fut_names().get(fut)
+
+    def log_info(self, msg: str) -> None:
+        self.log.info(msg)
+
+    def log_exception(
+        self,
+        msg: object,
+        *,
+        exc_info: (
+            tuple[type[BaseException], BaseException, types.TracebackType | None] | None
+        ) = None,
+    ) -> None:
+        self.log.exception(str(msg), exc_info=exc_info)
+
+    def fut_to_string(
+        self, f: asyncio.Future[Any] | _protocols.WithRepr, with_name: bool = True
+    ) -> str:
+        if not isinstance(f, asyncio.Future):
+            return repr(f)
+
+        s = ""
+        if with_name:
+            s = f"<Future#{self.get_future_name(f)}"
+        if not f.done():
+            s = f"{s}(pending)"
+        elif f.cancelled():
+            s = f"{s}(cancelled)"
+        else:
+            exc = f.exception()
+            if exc:
+                s = f"{s}(exception:{type(exc).__name__}:{exc})"
+            else:
+                s = f"{s}(result)"
+        if with_name:
+            s = f"{s}>"
+        return s
+
+    def silent_reporter(self, res: _protocols.FutureStatus[Any]) -> None:
+        """
+        A generic reporter for asyncio tasks that doesn't log errors.
+
+        This means that exceptions are **not** logged to the terminal and you won't
+        get warnings about tasks not being looked at when they finish.
+        """
+        if res.cancelled():
+            return
+
+        exc = res.exception()
+        if exc is None:
+            res.result()
+
+    def reporter(self, res: _protocols.FutureStatus[Any]) -> None:
+        """
+        A generic reporter for asyncio tasks.
+
+        This means that exceptions are logged to the terminal and you won't
+        get warnings about tasks not being looked at when they finish.
+
+        Note that it will not report asyncio.CancelledError() or KeyboardInterrupt.
+        """
+        if res.cancelled():
+            return
+
+        exc = res.exception()
+        if exc is None:
+            res.result()
+            return
+
+        if not isinstance(exc, KeyboardInterrupt):
+            if exc.__traceback__ is not None:
+                self.log_exception(exc, exc_info=(type(exc), exc, exc.__traceback__))
+            else:
+                self.log_exception(exc)
+
 
 if TYPE_CHECKING:
-    _T: _protocols.Tramp = cast(Tramp, None)
-    _CTX: _protocols.CTX[Tramp] = cast(CTX[Tramp], None)
-    _WBC: _protocols.WaitByCallback[None] = cast(CTX[Tramp], None)
-    _CB: _protocols.FutureCallback[None] = cast(_CTXCallback[None, Tramp], None)
+    _CTX: _protocols.CTX = cast(CTX, None)
+    _WBC: _protocols.WaitByCallback[None] = cast(CTX, None)
+    _CB: _protocols.FutureCallback[None] = cast(_CTXCallback[None], None)
